@@ -32,6 +32,26 @@ export class browser_manager {
     await this.page.screenshot({ path, fullPage: true });
   }
 
+  async extractCleanText(url: string): Promise<string> {
+    const context = await this.browser.newContext();
+    const page = await context.newPage();
+    try {
+      await page.goto(url, { waitUntil: 'networkidle' });
+      await page.evaluate(() => {
+        const elements = document.querySelectorAll('script, style');
+        elements.forEach(el => el.remove());
+      });
+      const cleanText = await page.evaluate(() => document.body.innerText);
+      return cleanText;
+    } catch (error) {
+      console.error(`Failed text extraction for ${url}:`, error);
+      throw error;
+    } finally {
+      await page.close();
+      await context.close();
+    }
+  }
+
   async close(): Promise<void> {
     if (this.browser) {
       await this.browser.close();
