@@ -1,0 +1,14 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "resolveJsonModule": true,
+    "outDir": "dist"
+  },
+  "include": ["apps/server/**/*.ts", "apps/cli/**/*.ts", "packages/**/*.ts", "types/**/*.d.ts"],
+  "exclude": ["apps/dashboard"]
+}
