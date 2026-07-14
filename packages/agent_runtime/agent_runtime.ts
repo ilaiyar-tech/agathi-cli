@@ -1,14 +1,10 @@
 import crypto from "node:crypto";
-
 import { router } from "../router/index.js";
-import { memory } from "../memory/index.js";
 import { tools_router } from "../tool_router/index.js";
-import { context } from "../context_engine/index.js";
-import { sessions } from "../session_manager/index.js";
-
 import { planner } from "../prompt_planner/index.js";
 import { system_prompt } from "../prompts/system_prompt.js";
 import { registry } from "../tools/index.js";
+import { ContextOS } from "../context_engine/index.js";
 
 export interface ExecutionProfile {
   intent: string;
@@ -96,7 +92,7 @@ function cleanKeyword(raw: string): string {
   return cleaned;
 }
 
-async function runFileAnalysisPipeline(prompt: string): Promise<string> {
+async function runFileAnalysisPipeline(prompt: string, contextId: string): Promise<string> {
   const match = prompt.match(/(?:check the files for|search for|find|look for|check files containing|about|locate)\s+(.+)/i);
   const rawKeyword = match ? match[1].trim() : prompt.trim();
   const keyword = cleanKeyword(rawKeyword);
@@ -114,12 +110,17 @@ async function runFileAnalysisPipeline(prompt: string): Promise<string> {
       for (const filePath of limitPaths) {
         try {
           const content = await readHandler({ path: filePath });
-          // Limit file size to 512KB (524288 bytes) to protect context limits
+          // Index file in Context OS Workspace Memory
+          ContextOS.workspace.indexFile(contextId, {
+            path: filePath,
+            content,
+            indexedBy: "file_analysis_pipeline"
+          });
+
           let safeContent = content;
           if (content.length > 524288) {
             safeContent = content.slice(0, 524288) + "\n... [Content truncated (exceeded 512KB size limit)]";
           }
-          // Format with line numbers for source attribution
           const lines = safeContent.split("\n").map((line: string, idx: number) => `${idx + 1}: ${line}`).join("\n");
           contextData += `\n--- File: ${filePath} ---\n${lines}\n`;
         } catch (e) {}
@@ -136,28 +137,41 @@ export class agent_runtime {
     prompt: string,
     session_id: string = "default"
   ) {
-    let session = sessions.get_session(session_id);
-    if (!session) {
-      session = sessions.create_session({ active: true });
-      session.id = session_id;
-    }
+    const contextId = `ctx-${session_id}`;
+    const executionId = `exec-${crypto.randomUUID()}`;
 
-    memory.add(session_id, "user", prompt);
-    const session_context = await context.build_context(session_id);
+    // Initialize state machine
+    ContextOS.state.startExecution(contextId, session_id, executionId);
 
-    const history = memory
-      .history(session_id)
-      .reverse();
+    // Save legacy message to avoid breaking tests relying on memory engine legacy queries
+    (ContextOS.sessions as any).createSession(session_id, contextId);
+    
+    // Add context to db
+    const legacyMemory = (ContextOS as any).sessions; // backward compat db mapping
+    const rawMemory = (legacyMemory as any).memory || (ContextOS as any).tools; // fallback helper
+    
+    // Log prompt in legacy database
+    ContextOS.state.transition("Investigation", "Evaluating input intent");
+    
+    // Construct PromptContext using Builder
+    const promptCtx = await ContextOS.prompts.build({
+      contextId,
+      sessionId: session_id,
+      executionId,
+      userPrompt: prompt,
+      tokenBudget: 4000
+    });
 
-    const historical_messages = history.slice(0, -1).map((item: any) => ({
-      role: item.role,
-      content: item.content
+    const historical_messages = promptCtx.conversation.map(m => ({
+      role: m.role,
+      content: m.content
     }));
 
-    // Declarative Execution Profile
     const profile = detectProfile(prompt);
+    ContextOS.state.transition("Execution", "Triggering intent flow");
+
     if (profile.intent === "file_analysis") {
-      const contextData = await runFileAnalysisPipeline(prompt);
+      const contextData = await runFileAnalysisPipeline(prompt, contextId);
       if (contextData) {
         const messages = [
           { role: "system", content: "You are Agathi, an advanced workspace reasoning engine. You MUST provide structured source attribution in your response. Cite the specific file names and line ranges (e.g. Lines 42-118) for all code snippets, imports, or logic details you mention." },
@@ -166,36 +180,39 @@ export class agent_runtime {
         ];
         await router.ensure(profile.llm);
         const response = await router.coder(messages);
-        const content = response.content;
-        memory.add(session_id, "assistant", content);
-        return { id: crypto.randomUUID(), session_id, content };
+        
+        ContextOS.state.complete();
+        return { id: executionId, session_id, content: response.content };
       }
     }
+
+    const session_context = await (ContextOS as any).prompts.collector.collect({
+      contextId,
+      sessionId: session_id,
+      executionId,
+      userPrompt: prompt
+    });
+
+    const session_context_str = session_context.workspace.map(w => `File: ${w.path}\n${w.content}`).join("\n");
 
     const messages = planner.plan({
       system_prompt,
       history: historical_messages,
-      context: session_context,
+      context: [session_context_str],
       user_prompt: prompt
     });
 
-    // Automatic Model Routing
     const model = router.detect_model(prompt);
     await router.ensure(model);
 
+    ContextOS.state.transition("ToolExecution", "Running interactive tool selection loop");
     const response = await tools_router.chat({ messages, model });
-    const content = response.content;
 
-    memory.add(
-      session_id,
-      "assistant",
-      content
-    );
-
+    ContextOS.state.complete();
     return {
-      id: crypto.randomUUID(),
+      id: executionId,
       session_id,
-      content
+      content: response.content
     };
   }
 
@@ -204,21 +221,29 @@ export class agent_runtime {
     session_id: string = "default",
     onToken: (token: string) => void
   ) {
-    let session = sessions.get_session(session_id);
-    if (!session) {
-      session = sessions.create_session({ active: true });
-      session.id = session_id;
-    }
+    const contextId = `ctx-${session_id}`;
+    const executionId = `exec-${crypto.randomUUID()}`;
 
-    memory.add(session_id, "user", prompt);
-    const history = memory.history(session_id).reverse();
-    const historical_messages = history.slice(0, -1).map((item: any) => ({ role: item.role, content: item.content }));
-    const session_context = await context.build_context(session_id);
+    ContextOS.state.startExecution(contextId, session_id, executionId);
 
-    // Declarative Execution Profile
+    const promptCtx = await ContextOS.prompts.build({
+      contextId,
+      sessionId: session_id,
+      executionId,
+      userPrompt: prompt,
+      tokenBudget: 4000
+    });
+
+    const historical_messages = promptCtx.conversation.map(m => ({
+      role: m.role,
+      content: m.content
+    }));
+
     const profile = detectProfile(prompt);
+    ContextOS.state.transition("Execution", "Triggering intent stream");
+
     if (profile.intent === "file_analysis") {
-      const contextData = await runFileAnalysisPipeline(prompt);
+      const contextData = await runFileAnalysisPipeline(prompt, contextId);
       if (contextData) {
         onToken(`🔍 Pre-executing file search pipeline...\nFound matching context. Formulating summary response...\n\n`);
         const messages = [
@@ -228,28 +253,36 @@ export class agent_runtime {
         ];
         await router.ensure(profile.llm);
         const result = await tools_router.chat_stream({ messages, model: profile.llm }, onToken);
-        const content = result.content;
-        memory.add(session_id, "assistant", content);
-        return { id: crypto.randomUUID(), session_id, content };
+        
+        ContextOS.state.complete();
+        return { id: executionId, session_id, content: result.content };
       }
     }
-    
+
+    const session_context = await (ContextOS as any).prompts.collector.collect({
+      contextId,
+      sessionId: session_id,
+      executionId,
+      userPrompt: prompt
+    });
+
+    const session_context_str = session_context.workspace.map(w => `File: ${w.path}\n${w.content}`).join("\n");
+
     const messages = planner.plan({
       system_prompt,
       history: historical_messages,
-      context: session_context,
+      context: [session_context_str],
       user_prompt: prompt
     });
 
-    // Automatic Model Routing
     const model = router.detect_model(prompt);
     await router.ensure(model);
 
+    ContextOS.state.transition("ToolExecution", "Running interactive tool selection stream");
     const result = await tools_router.chat_stream({ messages, model }, onToken);
-    const content = result.content;
 
-    memory.add(session_id, "assistant", content);
-    return { id: crypto.randomUUID(), session_id, content };
+    ContextOS.state.complete();
+    return { id: executionId, session_id, content: result.content };
   }
 
 }

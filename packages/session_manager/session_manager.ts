@@ -1,37 +1,28 @@
-import crypto from "node:crypto";
-import { memory } from "../memory/index.js";
-import { context } from "../context_engine/index.js";
-
-export interface Session {
-  id: string;
-  created_at: number;
-  metadata: Record<string, any>;
-}
+import { ContextOS } from "../context_engine/index.js";
+import { Session } from "../context/context_types.js";
 
 export class session_manager {
-  private sessions = new Map<string, Session>();
-
   create_session(metadata: Record<string, any> = {}): Session {
-    const session: Session = {
-      id: crypto.randomUUID(),
-      created_at: Date.now(),
-      metadata
-    };
-    this.sessions.set(session.id, session);
-    return session;
+    const id = `sess-${Math.random().toString(36).substr(2, 9)}`;
+    const contextId = `ctx-${id}`;
+    return ContextOS.sessions.createSession(id, contextId, undefined, metadata);
   }
 
   get_session(id: string): Session | undefined {
-    return this.sessions.get(id);
+    return ContextOS.sessions.getSession(id);
   }
 
   list_sessions(): Session[] {
-    return Array.from(this.sessions.values()).sort((a, b) => b.created_at - a.created_at);
+    return ContextOS.sessions.listSessions();
   }
 
   delete_session(id: string): boolean {
-    memory.clear(id);
-    return this.sessions.delete(id);
+    try {
+      ContextOS.sessions.deleteSession(id);
+      return true;
+    } catch (e) {
+      return false;
+    }
   }
 
   update_metadata(id: string, metadata: Record<string, any>): Session {
@@ -39,8 +30,8 @@ export class session_manager {
     if (!session) {
       throw new Error(`Session ${id} not found`);
     }
-    session.metadata = { ...session.metadata, ...metadata };
-    return session;
+    const updatedMeta = { ...session.metadata, ...metadata };
+    return ContextOS.sessions.createSession(id, session.contextId, session.agentId, updatedMeta);
   }
 }
 
