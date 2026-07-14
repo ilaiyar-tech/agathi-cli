@@ -17,6 +17,7 @@ import { control_routes } from "./routes/index.js";
 import { chats_routes } from "./routes/chats.js";
 import { attach_websockets } from "./websocket/index.js";
 
+import { memory } from "../../../packages/memory/index.js";
 import { settings_routes } from "./routes/settings.js";
 import { knowledge_routes } from "./routes/knowledge.js";
 import { agents_routes } from "./routes/agents.js";
@@ -232,5 +233,7 @@ await app.listen({
 });
 
 attach_websockets(app.server);
+
+memory.clear("default");
 
 console.log("server_started");
