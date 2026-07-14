@@ -236,7 +236,7 @@ program
       const spinner = opts.stream ? null : ora({ text: "Thinking...", color: "cyan" }).start();
       try {
         if (opts.stream) {
-          process.stdout.write(chalk.cyan("\nagathi › "));
+          process.stdout.write(chalk.cyan("\nஅ › "));
           await stream_chat_api(trimmed, opts.session, (token: string) => {
             process.stdout.write(token);
           });
@@ -245,7 +245,7 @@ program
           const result = await block_chat_api(trimmed, opts.session);
           spinner?.stop();
           console.log();
-          process.stdout.write(chalk.cyan("agathi › "));
+          process.stdout.write(chalk.cyan("அ › "));
           console.log();
           printMarkdown(result.content);
           console.log();

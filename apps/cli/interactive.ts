@@ -171,7 +171,7 @@ export async function launch_interactive(opts: {
     rl.prompt();
   });
 
-  const prompt_label = () => chalk.magenta(`agathi (${state.sessionId}) › `);
+  const prompt_label = () => chalk.magenta("அ › ");
   rl.setPrompt(prompt_label());
   rl.prompt();
 
@@ -259,21 +259,21 @@ export async function launch_interactive(opts: {
 
         const updateLoader = () => {
           if (loaderTimer) {
-             process.stdout.write("\r\x1b[K" + chalk.cyan("agathi › ") + chalk.gray(loaderFrames[frameIdx] + " " + currentLoaderText));
+             process.stdout.write("\r\x1b[K" + chalk.cyan("அ › ") + chalk.gray(loaderFrames[frameIdx] + " " + currentLoaderText));
           }
         };
-
-        process.stdout.write("\n" + chalk.cyan("agathi › ") + chalk.gray(loaderFrames[frameIdx] + " " + currentLoaderText));
+ 
+        process.stdout.write("\n" + chalk.cyan("அ › ") + chalk.gray(loaderFrames[frameIdx] + " " + currentLoaderText));
         loaderTimer = setInterval(() => {
           frameIdx = (frameIdx + 1) % loaderFrames.length;
           updateLoader();
         }, 80);
-
+ 
         const clearLoader = () => {
           if (loaderTimer) {
             clearInterval(loaderTimer);
             loaderTimer = null;
-            process.stdout.write("\r\x1b[K" + chalk.cyan("agathi › "));
+            process.stdout.write("\r\x1b[K" + chalk.cyan("அ › "));
           }
         };
 
@@ -393,7 +393,7 @@ export async function launch_interactive(opts: {
         
         spinner?.stop();
         console.log();
-        console.log(chalk.cyan("agathi ›"));
+        console.log(chalk.cyan("அ ›"));
         printMarkdown(replyContent);
         console.log();
       }
