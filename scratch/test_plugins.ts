@@ -4,7 +4,7 @@ import { pluginManager } from "../packages/plugin_sdk/index.js";
 import { eventBus } from "../packages/core/index.js";
 
 async function run() {
-  console.log("Starting Agathi Plugin SDK V1 Verification Test...");
+  console.log("Starting Agathi Plugin SDK V1 Hardening & Safety Verification Test...");
 
   const pluginsDir = path.join(process.cwd(), "dist", "packages", "plugins");
 
@@ -78,13 +78,48 @@ async function run() {
     pluginManager.enablePlugin("mock_test");
     console.log("Plugin state after enable:", pluginManager.getPluginState("mock_test"));
 
-    console.log("\n5. Testing wildcard Event Bus plugin hook...");
+    console.log("\n5. Testing Crash Isolation...");
+    try {
+      await pluginManager.executePlugin("mock_test", "crash", {});
+      console.error("FAIL: Crash action did not throw!");
+    } catch (e: any) {
+      console.log("SUCCESS: Crash caught! Error message:", e.message);
+      console.log("Plugin state after crash:", pluginManager.getPluginState("mock_test"));
+      if (pluginManager.getPluginState("mock_test") !== "disabled") {
+        throw new Error("Plugin was not disabled after crashing!");
+      }
+    }
+
+    console.log("\n6. Testing Hot Reload...");
+    console.log("Reloading mock_test plugin...");
+    await pluginManager.reloadPlugin(pluginsDir, "mock_test");
+    console.log("Plugin state after hot reload:", pluginManager.getPluginState("mock_test"));
+    if (pluginManager.getPluginState("mock_test") !== "running") {
+      throw new Error("Plugin failed to restart into running state after reload!");
+    }
+
+    console.log("\n7. Testing Timeout Protection...");
+    try {
+      // Execute hang action with a 1 second timeout
+      await pluginManager.executePlugin("mock_test", "hang", {}, 1000);
+      console.error("FAIL: Hang action did not timeout!");
+    } catch (e: any) {
+      console.log("SUCCESS: Timeout caught! Error message:", e.message);
+      console.log("Plugin state after timeout:", pluginManager.getPluginState("mock_test"));
+      if (pluginManager.getPluginState("mock_test") !== "disabled") {
+        throw new Error("Plugin was not disabled after timing out!");
+      }
+    }
+
+    console.log("\n8. Testing wildcard Event Bus plugin hook...");
+    // Re-enable after timeout test to let events trigger
+    pluginManager.enablePlugin("mock_test");
     eventBus.emitEvent("ZIP_CREATED" as any, { zipPath: "/tmp/workspace_gen.zip" });
     
     console.log("Waiting for event execution to settle...");
     await new Promise(r => setTimeout(r, 1000));
 
-    console.log("\nPlugin SDK V1 verification complete: 100% SUCCESS!");
+    console.log("\nPlugin SDK V1 Hardening & Safety verification complete: 100% SUCCESS!");
 
   } catch (e: any) {
     console.error("Plugin verification failed:", e.message);

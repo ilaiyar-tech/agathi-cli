@@ -3,6 +3,15 @@ export const actions = {
     sdk.logger.info(`Action hello triggered for ${params.name}`);
     sdk.logger.info(`Data directory path: ${sdk.storage.dataDir}`);
     return `Hello, ${params.name}! Mock plugin is working. SDK version is ${sdk.apiVersion}`;
+  },
+  crash: async (params: any, sdk: any) => {
+    sdk.logger.error("Intentional crash action triggered!");
+    throw new Error("MOCK_CRASH");
+  },
+  hang: async (params: any, sdk: any) => {
+    sdk.logger.info("Intentional hang action triggered!");
+    await new Promise(r => setTimeout(r, 60000)); // Hangs for 60s
+    return "completed";
   }
 };
 

@@ -7,6 +7,6 @@
     "env": ["MOCK_API_KEY"]
   },
   "events": ["ZIP_CREATED"],
-  "actions": ["hello"],
+  "actions": ["hello", "crash", "hang"],
   "entry": "entry.js"
 }
