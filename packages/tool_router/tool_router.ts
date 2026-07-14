@@ -117,7 +117,8 @@ export class tool_router {
           }
         }
       } else {
-        if (workflow.getCurrentState() !== "Summary" && no_tool_retry_count < 3) {
+        const currentState = workflow.getCurrentState();
+        if (currentState !== "Summary" && currentState !== "Verification" && no_tool_retry_count < 3) {
           no_tool_retry_count++;
           messages.push({ role: "assistant", content: message.content || "" });
           messages.push({
@@ -337,7 +338,8 @@ export class tool_router {
 
         continue;
       } else {
-        if (workflow.getCurrentState() !== "Summary" && no_tool_retry_count < 3) {
+        const currentState = workflow.getCurrentState();
+        if (currentState !== "Summary" && currentState !== "Verification" && no_tool_retry_count < 3) {
           no_tool_retry_count++;
           messages.push(assistant_message);
           messages.push({
