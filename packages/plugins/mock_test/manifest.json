@@ -1,0 +1,6 @@
+{
+  "name": "mock_test",
+  "version": "1.0.0",
+  "description": "Mock plugin for Stage 14 validation",
+  "entry": "entry.js"
+}
