@@ -1,0 +1,8 @@
+node_modules/
+dist/
+workspace/
+storage/
+*.zip
+*.tar
+*.tar.gz
+*.log

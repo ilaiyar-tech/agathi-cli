@@ -1,0 +1,76 @@
+<tool_response>{"step":{"tool":"browser_action","args":{"action":"extract_text","url":"https://ilaiyar.in"}},"success":true,"output":{"text":"Estimator / தோராயக் கணக்கீடு\nFind the Right Solution for Your Business\n\nAnswer 4 quick questions to view custom packaging options.\n\n Start →\nSkip Estimator / கணக்கீட்டைத் தவிர்க்கவும்\nQuestion 1 / கேள்வி 1\nWhere is your business located?\n\nThe company optimizes setup routes for local networks.\n\nChidambaram / சிதம்பரம் Jayankondam / ஜெயங்கொண்டம் Meensurutti / மீன்சுருட்டி Kumbakonam / கும்பகோணம்\nQuestion 2 / கேள்வி 2\nWhat is your business category?\n\nThis helps determine database structures.\n\nRetail Store / சில்லறை வணிகம் Clinic / மருத்துவம் & கிளினிக் School / பள்​ளி & கல்வி நிறுவனம் Restaurant / உணவகம் & பேக்கரி\nQuestion 3 / கேள்வி 3\nWhich feature is most critical?\n\nWe align our integration blocks to your selection.\n\nOnline Booking / ஆன்லைன் முன்பதிவு WhatsApp Invoice / வாட்ஸ்அப் ரசீது Notice Board / அறிவிப்புப் பலகை Admin Dashboard / மேலாண்மைத் டேஷ்போர்டு\nResult / முடிவு\nReady to Generate Estimate\n\nEnter your contact details to review recommended plans via WhatsApp.\n\n  Submit & Open WhatsApp Chat →\nIlaiyar
+DIGITAL SOLUTIONS
+Home
+About Us
+Services
+AI Builder ⚡
+Contact
+Get Started →
+தமிழ்
+ILAIYAR SOLUTIONS · PREMIUM B2B WEB SETUP
+Regional Business Ingress Hub
+Chidambaram
+Modern Web Solutions & WhatsApp Automation for Local Businesses\n\nThe company builds high-performance websites, customized booking forms, and PostgreSQL database architectures tailored to shops, clinics, and schools.\n\nCoverage Areas ↓
+ Packages & Pricing
+Scroll Down
+REGIONAL COVERAGE
+Our Primary Focus Areas\n\nEnabling B2B and educational growth across Ariyalur and Cuddalore districts.\n\n01
+Education & Retail
+Chidambaram\n\nCustom web portals and school registration setups for educational institutes.\n\n02
+Wholesale Hub
+Jayankondam\n\nDigital listings, database portals, and order systems for retail and supermarkets.\n\n03
+Headquarters
+Meensurutti\n\nThe company's core engineering hub, serving schools, local retailers, and service providers.\n\nB2B Web Infrastructures\n\nElevate your brand with clean code, dedicated databases, and automated client alerts.\n\nCORE PACKAGES
+Three Tailored Business Plans\n\nevery setup includes mobile layouts, query forms, and custom admin access.\n
+🏪
+Business Website
+Bilingual Basic Landing
+\nThe company builds high-performance websites, customized booking forms, and PostgreSQL database architectures tailored to shops, clinics, and schools.\n
+₹4,999 / onwards
+📲
+Web App + Booking
+Dynamic CRM & Database
+\nThe company builds high-performance websites, customized booking forms, and PostgreSQL database architectures tailored to shops, clinics, and schools.\n
+₹9,999 / onwards
+🏫
+School Solution
+Custom Academic Setup
+\nThe company builds high-performance websites, customized booking forms, and PostgreSQL database architectures tailored to shops, clinics, and schools.\n
+₹7,999 / onwards
+View Pricing Details →
+INTERACTIVE DEMOS
+Interactive Prototype Sites
+\nThe company builds high-performance websites, customized booking forms, and PostgreSQL database architectures tailored to shops, clinics, and schools.\n
+🏫 School Demo
+Green Valley Vidyalaya
+\nThe company builds high-performance websites, customized booking forms, and PostgreSQL database architectures tailored to shops, clinics, and schools.\n
+Admission FormCBSE Blueprint
+View Demo →
+🩺 Clinic Demo
+Wellspring Clinic
+\nThe company builds high-performance websites, customized booking forms, and PostgreSQL database architectures tailored to shops, clinics, and schools.\n
+Booking SlotsPatient Logs
+View Demo →
+FOUNDER'S MESSAGE
+Empowering Regional Commerce
+"Our mission at Ilaiyar is to provide local stores, clinics, and educational hubs with enterprise-grade web setups. We merge regional accessibility with professional tools to help your B2B brands scale." Agathiyan Gokulrajan · Founder, Ilaiyar Solutions\nCONSULTATION
+Start Your Digital Journey Today
+\nThe company builds high-performance websites, customized booking forms, and PostgreSQL database architectures tailored to shops, clinics, and schools.\n
+WhatsApp Chat
+\nThe company builds high-performance websites, customized booking forms, and PostgreSQL database architectures tailored to shops, clinics, and schools.\nChat on WhatsApp →
+Enquiry Form
+\nThe company builds high-performance websites, customized booking forms, and PostgreSQL database architectures tailored to shops, clinics, and schools.\n
+Fill Details Form →
+Ilaiyar Solutions
+\nThe company builds high-performance websites, customized booking forms, and PostgreSQL database architectures tailored to shops, clinics, and schools.\n
+Address
+Monakrishna Complex, 1st Floor,
+Above Axis Bank, Muthuswamimadam,
+Meensurutti, Ariyalur District,
+Tamil Nadu - 612903
+Quick Links
+Our Story
+Services
+Contact
+Admin Console →
+© 2026 Ilaiyar. All Rights Reserved."}}</tool_response>

@@ -1,0 +1,1 @@
+$(echo $content | awk '{print "Time logged: " $0}')
