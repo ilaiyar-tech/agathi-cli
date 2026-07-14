@@ -402,7 +402,38 @@ function parseCustomToolCalls(msg: any) {
         msg.content = content.replace(jsonStr, "").trim();
         return;
       }
-    } catch (e) {}
+    } catch (e) {
+      // Fallback: parse using string/regex extraction if JSON.parse fails due to unescaped quotes
+      const nameMatch = jsonStr.match(/"name"\s*:\s*"([a-zA-Z0-9_]+)"/);
+      if (nameMatch) {
+        const name = nameMatch[1];
+        const argsMatch = jsonStr.match(/"arguments"\s*:\s*(\{[\s\S]*\})/);
+        if (argsMatch) {
+          const argsContent = argsMatch[1];
+          const cmdMatch = argsContent.match(/"command"\s*:\s*"([\s\S]*?)"\s*}/) || argsContent.match(/"command"\s*:\s*"([\s\S]*)"/);
+          const pathMatch = argsContent.match(/"path"\s*:\s*"([\s\S]*?)"/);
+          const contentMatch = argsContent.match(/"content"\s*:\s*"([\s\S]*?)"/);
+          
+          let parsedArgs: any = {};
+          if (cmdMatch) parsedArgs.command = cmdMatch[1];
+          if (pathMatch) parsedArgs.path = pathMatch[1];
+          if (contentMatch) parsedArgs.content = contentMatch[1];
+          
+          if (Object.keys(parsedArgs).length > 0) {
+            msg.tool_calls = [{
+              id: `call_${Date.now()}`,
+              type: "function",
+              function: {
+                name,
+                arguments: JSON.stringify(parsedArgs)
+              }
+            }];
+            msg.content = content.replace(jsonStr, "").trim();
+            return;
+          }
+        }
+      }
+    }
   }
 }
 
@@ -454,7 +485,30 @@ function colorizeText(text: string): string {
         
         return `${prefix}\x1b[33m[TOOL CALL]:\x1b[0m \x1b[32m${toolName}\x1b[0m${detail}${suffix}`;
       }
-    } catch (e) {}
+    } catch (e) {
+      // Fallback colorizing for unescaped JSON
+      const nameMatch = jsonStr.match(/"name"\s*:\s*"([a-zA-Z0-9_]+)"/);
+      if (nameMatch) {
+        const toolName = nameMatch[1];
+        const argsMatch = jsonStr.match(/"arguments"\s*:\s*(\{[\s\S]*\})/);
+        let detail = "";
+        if (argsMatch) {
+          const argsContent = argsMatch[1];
+          const cmdMatch = argsContent.match(/"command"\s*:\s*"([\s\S]*?)"\s*}/) || argsContent.match(/"command"\s*:\s*"([\s\S]*)"/);
+          const pathMatch = argsContent.match(/"path"\s*:\s*"([\s\S]*?)"/);
+          const keywordMatch = argsContent.match(/"keyword"\s*:\s*"([\s\S]*?)"/);
+          
+          if (pathMatch) detail = ` (path: \x1b[36m${pathMatch[1]}\x1b[0m)`;
+          else if (cmdMatch) detail = ` (cmd: \x1b[35m${cmdMatch[1]}\x1b[0m)`;
+          else if (keywordMatch) detail = ` (keyword: \x1b[32m${keywordMatch[1]}\x1b[0m)`;
+        }
+        const jsonStartIdx = text.indexOf(jsonStr);
+        const prefix = text.slice(0, jsonStartIdx);
+        const suffix = text.slice(jsonStartIdx + jsonStr.length);
+        
+        return `${prefix}\x1b[33m[TOOL CALL]:\x1b[0m \x1b[32m${toolName}\x1b[0m${detail}${suffix}`;
+      }
+    }
   }
 
   return text;
