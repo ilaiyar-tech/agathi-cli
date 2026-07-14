@@ -30,7 +30,9 @@ export class tool_router {
     while (true) {
       const payload: any = {
         messages,
-        temperature: 0.1
+        temperature: 0.1,
+        frequency_penalty: 0.5,
+        repeat_penalty: 1.1
       };
 
       if (tools.length > 0) {
@@ -132,6 +134,8 @@ export class tool_router {
       const payload: any = {
         messages,
         temperature: 0.1,
+        frequency_penalty: 0.5,
+        repeat_penalty: 1.1,
         stream: true
       };
 
