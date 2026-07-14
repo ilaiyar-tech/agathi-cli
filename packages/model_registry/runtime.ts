@@ -35,7 +35,7 @@ export async function start_model(
       "--port","8012",
       "--model",model.path,
       "--gpu-layers","999",
-      "--ctx-size","4096",
+      "--ctx-size","8192",
       "--slots",
       "--slot-save-path","/tmp/llama_slots"
     ],
