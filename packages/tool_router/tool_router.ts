@@ -35,7 +35,7 @@ export class tool_router {
         repeat_penalty: 1.1
       };
 
-      if (tools.length > 0) {
+      if (tools.length > 0 && workflow.getCurrentState() !== "Summary") {
         payload.tools = tools;
       }
 
@@ -65,7 +65,21 @@ export class tool_router {
 
           if (function_name === "finish") {
             workflow.transition("Summary");
-            return { content: message.content, messages };
+            if (messages.length > 0 && messages[0].role === "system") {
+              const extIndex = messages[0].content.indexOf("CRITICAL WORKFLOW PIPELINE INSTRUCTIONS:");
+              if (extIndex !== -1) {
+                messages[0].content = messages[0].content.slice(0, extIndex) + workflow.getSystemPromptExtension();
+              } else {
+                messages[0].content += "\n\n" + workflow.getSystemPromptExtension();
+              }
+            }
+            messages.push({
+              role: "tool",
+              tool_call_id: tc.id,
+              name: function_name,
+              content: "{\"success\":true,\"state\":\"Summary\"}"
+            });
+            continue;
           }
 
           const result = await engine.execute({
@@ -139,7 +153,7 @@ export class tool_router {
         stream: true
       };
 
-      if (tools.length > 0) {
+      if (tools.length > 0 && workflow.getCurrentState() !== "Summary") {
         payload.tools = tools;
       }
 
@@ -244,7 +258,21 @@ export class tool_router {
 
           if (name === "finish") {
             workflow.transition("Summary");
-            return { content, messages };
+            if (messages.length > 0 && messages[0].role === "system") {
+              const extIndex = messages[0].content.indexOf("CRITICAL WORKFLOW PIPELINE INSTRUCTIONS:");
+              if (extIndex !== -1) {
+                messages[0].content = messages[0].content.slice(0, extIndex) + workflow.getSystemPromptExtension();
+              } else {
+                messages[0].content += "\n\n" + workflow.getSystemPromptExtension();
+              }
+            }
+            messages.push({
+              role: "tool",
+              tool_call_id: tc.id,
+              name: name,
+              content: "{\"success\":true,\"state\":\"Summary\"}"
+            });
+            continue;
           }
 
           if (name === "run_command") {
