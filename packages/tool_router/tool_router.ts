@@ -50,55 +50,7 @@ export class tool_router {
 
       if (!message.tool_calls || message.tool_calls.length === 0) {
         if (message.content) {
-          const funcMatch = message.content.match(/<function-call>([\s\S]*?)<\/function-call>/);
-          if (funcMatch) {
-            try {
-              const parsed = JSON.parse(funcMatch[1]);
-              message.tool_calls = [{
-                id: `call_${Date.now()}`,
-                type: "function",
-                function: {
-                  name: parsed.name,
-                  arguments: typeof parsed.arguments === "string" ? parsed.arguments : JSON.stringify(parsed.arguments)
-                }
-              }];
-              message.content = message.content.replace(funcMatch[0], "").trim();
-            } catch (e) {}
-          } else {
-            const altMatch = message.content.match(/\[TOOL CALL\]:\s*([a-zA-Z0-9_]+)\(([\s\S]*?)\)/);
-            if (altMatch) {
-              try {
-                message.tool_calls = [{
-                  id: `call_${Date.now()}`,
-                  type: "function",
-                  function: {
-                    name: altMatch[1],
-                    arguments: altMatch[2]
-                  }
-                }];
-                message.content = message.content.replace(altMatch[0], "").trim();
-              } catch (e) {}
-            } else {
-              const mdJsonMatch = message.content.match(/```(?:json)?\s*(\{[\s\S]*?\})\s*```/);
-              const jsonMatch = mdJsonMatch || message.content.match(/(\{[\s\S]*?\})/);
-              if (jsonMatch) {
-                try {
-                  const parsed = JSON.parse(jsonMatch[1]);
-                  if (parsed.name && parsed.arguments) {
-                    message.tool_calls = [{
-                      id: `call_${Date.now()}`,
-                      type: "function",
-                      function: {
-                        name: parsed.name,
-                        arguments: typeof parsed.arguments === "string" ? parsed.arguments : JSON.stringify(parsed.arguments)
-                      }
-                    }];
-                    message.content = message.content.replace(jsonMatch[0], "").trim();
-                  }
-                } catch (e) {}
-              }
-            }
-          }
+          parseCustomToolCalls(message);
         }
       }
 
@@ -199,6 +151,7 @@ export class tool_router {
       let content = "";
       let tool_calls_map: any = {};
       let has_tool_calls = false;
+      let streamBuffer = "";
 
       await new Promise<void>((resolve, reject) => {
         let buffer = "";
@@ -206,23 +159,30 @@ export class tool_router {
           buffer += chunk.toString();
           const lines = buffer.split("\n");
           buffer = lines.pop() ?? "";
-
+ 
           for (const line of lines) {
             if (!line.startsWith("data:")) continue;
             const json = line.replace("data:", "").trim();
             if (json === "[DONE]") continue;
-
+ 
             try {
               const obj = JSON.parse(json);
               const choice = obj.choices?.[0];
               if (!choice) continue;
-
+ 
               const delta = choice.delta;
               if (delta.content) {
                 content += delta.content;
-                onToken(delta.content);
+                streamBuffer += delta.content;
+                if (streamBuffer.includes("\n")) {
+                  const parts = streamBuffer.split("\n");
+                  streamBuffer = parts.pop() ?? "";
+                  for (const part of parts) {
+                    onToken(colorizeText(part) + "\n");
+                  }
+                }
               }
-
+ 
               if (delta.tool_calls) {
                 has_tool_calls = true;
                 for (const tc of delta.tool_calls) {
@@ -242,65 +202,22 @@ export class tool_router {
             } catch (e) {}
           }
         });
-
-        response.data.on("end", () => resolve());
+ 
+        response.data.on("end", () => {
+          if (streamBuffer) {
+            onToken(colorizeText(streamBuffer));
+          }
+          resolve();
+        });
         response.data.on("error", (err: any) => reject(err));
       });
 
-      const funcMatch = content.match(/<function-call>([\s\S]*?)<\/function-call>/);
-      if (funcMatch) {
-        try {
-          const parsed = JSON.parse(funcMatch[1]);
-          has_tool_calls = true;
-          tool_calls_map[0] = {
-            id: `call_${Date.now()}`,
-            type: "function",
-            function: {
-              name: parsed.name,
-              arguments: typeof parsed.arguments === "string" ? parsed.arguments : JSON.stringify(parsed.arguments)
-            }
-          };
-          // optionally remove the raw text from content so we don't display raw xml to the user
-          content = content.replace(funcMatch[0], "").trim();
-        } catch (e) {}
-      }
-
-      if (!has_tool_calls) {
-        const altMatch = content.match(/\[TOOL CALL\]:\s*([a-zA-Z0-9_]+)\(([\s\S]*?)\)/);
-        if (altMatch) {
-          try {
-            has_tool_calls = true;
-            tool_calls_map[0] = {
-              id: `call_${Date.now()}`,
-              type: "function",
-              function: {
-                name: altMatch[1],
-                arguments: altMatch[2]
-              }
-            };
-            content = content.replace(altMatch[0], "").trim();
-          } catch (e) {}
-        } else {
-          const mdJsonMatch = content.match(/```(?:json)?\s*(\{[\s\S]*?\})\s*```/);
-          const jsonMatch = mdJsonMatch || content.match(/(\{[\s\S]*?\})/);
-          if (jsonMatch) {
-            try {
-              const parsed = JSON.parse(jsonMatch[1]);
-              if (parsed.name && parsed.arguments) {
-                has_tool_calls = true;
-                tool_calls_map[0] = {
-                  id: `call_${Date.now()}`,
-                  type: "function",
-                  function: {
-                    name: parsed.name,
-                    arguments: typeof parsed.arguments === "string" ? parsed.arguments : JSON.stringify(parsed.arguments)
-                  }
-                };
-                content = content.replace(jsonMatch[0], "").trim();
-              }
-            } catch (e) {}
-          }
-        }
+      const dummyMessage = { content, tool_calls: undefined as any };
+      parseCustomToolCalls(dummyMessage);
+      if (dummyMessage.tool_calls && dummyMessage.tool_calls.length > 0) {
+        has_tool_calls = true;
+        tool_calls_map[0] = dummyMessage.tool_calls[0];
+        content = dummyMessage.content;
       }
 
       const assistant_message: any = { role: "assistant" };
@@ -390,3 +307,155 @@ export class tool_router {
 }
 
 export const tools_router = new tool_router();
+
+function extractParenthesisContent(str: string, startIdx: number): string | null {
+  let parenCount = 0;
+  for (let i = startIdx; i < str.length; i++) {
+    if (str[i] === "(") parenCount++;
+    else if (str[i] === ")") {
+      parenCount--;
+      if (parenCount === 0) {
+        return str.slice(startIdx + 1, i);
+      }
+    }
+  }
+  return null;
+}
+
+function extractJson(str: string): string | null {
+  const startIdx = str.indexOf("{");
+  if (startIdx === -1) return null;
+
+  let braceCount = 0;
+  for (let i = startIdx; i < str.length; i++) {
+    if (str[i] === "{") braceCount++;
+    else if (str[i] === "}") {
+      braceCount--;
+      if (braceCount === 0) {
+        return str.slice(startIdx, i + 1);
+      }
+    }
+  }
+  return null;
+}
+
+function parseCustomToolCalls(msg: any) {
+  const content = msg.content;
+  if (!content) return;
+
+  // 1. Check for <function-call>
+  const funcMatch = content.match(/<function-call>([\s\S]*?)<\/function-call>/);
+  if (funcMatch) {
+    try {
+      const parsed = JSON.parse(funcMatch[1]);
+      msg.tool_calls = [{
+        id: `call_${Date.now()}`,
+        type: "function",
+        function: {
+          name: parsed.name,
+          arguments: typeof parsed.arguments === "string" ? parsed.arguments : JSON.stringify(parsed.arguments)
+        }
+      }];
+      msg.content = content.replace(funcMatch[0], "").trim();
+      return;
+    } catch (e) {}
+  }
+
+  // 2. Check for [TOOL CALL]: name(args)
+  const toolCallPrefix = "[TOOL CALL]:";
+  const startIdx = content.indexOf(toolCallPrefix);
+  if (startIdx !== -1) {
+    const openParenIdx = content.indexOf("(", startIdx);
+    if (openParenIdx !== -1) {
+      const name = content.slice(startIdx + toolCallPrefix.length, openParenIdx).trim();
+      const argsStr = extractParenthesisContent(content, openParenIdx);
+      if (argsStr !== null && name) {
+        msg.tool_calls = [{
+          id: `call_${Date.now()}`,
+          type: "function",
+          function: {
+            name,
+            arguments: argsStr
+          }
+        }];
+        const fullCallString = content.slice(startIdx, content.indexOf(")", openParenIdx + argsStr.length) + 1);
+        msg.content = content.replace(fullCallString, "").trim();
+        return;
+      }
+    }
+  }
+
+  // 3. Check for JSON block
+  const jsonStr = extractJson(content);
+  if (jsonStr) {
+    try {
+      const parsed = JSON.parse(jsonStr);
+      if (parsed.name && parsed.arguments) {
+        msg.tool_calls = [{
+          id: `call_${Date.now()}`,
+          type: "function",
+          function: {
+            name: parsed.name,
+            arguments: typeof parsed.arguments === "string" ? parsed.arguments : JSON.stringify(parsed.arguments)
+          }
+        }];
+        msg.content = content.replace(jsonStr, "").trim();
+        return;
+      }
+    } catch (e) {}
+  }
+}
+
+function colorizeText(text: string): string {
+  // Check if it's a tool call: [TOOL CALL]: name(args)
+  const toolCallPrefix = "[TOOL CALL]:";
+  const startIdx = text.indexOf(toolCallPrefix);
+  if (startIdx !== -1) {
+    const openParenIdx = text.indexOf("(", startIdx);
+    if (openParenIdx !== -1) {
+      const toolName = text.slice(startIdx + toolCallPrefix.length, openParenIdx).trim();
+      const argsStr = extractParenthesisContent(text, openParenIdx);
+      if (argsStr !== null && toolName) {
+        let detail = "";
+        try {
+          const parsed = JSON.parse(argsStr);
+          if (parsed.path) detail = ` (path: \x1b[36m${parsed.path}\x1b[0m)`;
+          else if (parsed.command) detail = ` (cmd: \x1b[35m${parsed.command}\x1b[0m)`;
+          else if (parsed.keyword) detail = ` (keyword: \x1b[32m${parsed.keyword}\x1b[0m)`;
+        } catch (e) {
+          detail = ` (${argsStr})`;
+        }
+        
+        const prefix = text.slice(0, startIdx);
+        const suffixIdx = text.indexOf(")", openParenIdx + argsStr.length);
+        const suffix = suffixIdx !== -1 ? text.slice(suffixIdx + 1) : "";
+        
+        return `${prefix}\x1b[33m[TOOL CALL]:\x1b[0m \x1b[32m${toolName}\x1b[0m${detail}${suffix}`;
+      }
+    }
+  }
+
+  // Check if it's a JSON block
+  const jsonStr = extractJson(text);
+  if (jsonStr) {
+    try {
+      const parsed = JSON.parse(jsonStr);
+      if (parsed.name) {
+        const toolName = parsed.name;
+        const args = parsed.arguments || {};
+        let detail = "";
+        if (args.path) detail = ` (path: \x1b[36m${args.path}\x1b[0m)`;
+        else if (args.command) detail = ` (cmd: \x1b[35m${args.command}\x1b[0m)`;
+        else if (args.keyword) detail = ` (keyword: \x1b[32m${args.keyword}\x1b[0m)`;
+        
+        const jsonStartIdx = text.indexOf(jsonStr);
+        const prefix = text.slice(0, jsonStartIdx);
+        const suffix = text.slice(jsonStartIdx + jsonStr.length);
+        
+        return `${prefix}\x1b[33m[TOOL CALL]:\x1b[0m \x1b[32m${toolName}\x1b[0m${detail}${suffix}`;
+      }
+    } catch (e) {}
+  }
+
+  return text;
+}

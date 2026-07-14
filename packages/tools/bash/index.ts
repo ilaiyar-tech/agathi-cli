@@ -20,6 +20,9 @@ registry.register({
       cleanup: false
     })`${command}`;
 
+    // Prevent unhandled promise rejection crashes
+    proc.catch(() => {});
+
     let stdoutData = "";
     let stderrData = "";
     proc.stdout?.on("data", (chunk) => {
