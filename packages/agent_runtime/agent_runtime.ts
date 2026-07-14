@@ -46,6 +46,13 @@ const EXECUTION_PROFILES: Record<string, ExecutionProfile> = {
     llm: "coder_pro",
     stream: true,
     workspace: true
+  },
+  investigation: {
+    intent: "investigation",
+    tools: ["search_files", "read_file", "run_command"],
+    llm: "coder_pro",
+    stream: true,
+    workspace: true
   }
 };
 
@@ -70,6 +77,10 @@ function detectProfile(prompt: string): ExecutionProfile {
   }
   if (p.includes("run command") || p.includes("execute bash") || p.includes("npm run") || p.includes("npm install")) {
     return EXECUTION_PROFILES.terminal;
+  }
+  const inv = ["why", "how", "trace", "find", "investigate", "diagnose", "check", "analyze", "where", "who started"];
+  if (inv.some(keyword => p.includes(keyword))) {
+    return EXECUTION_PROFILES.investigation;
   }
   return EXECUTION_PROFILES.chat;
 }

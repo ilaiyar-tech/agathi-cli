@@ -3,6 +3,7 @@ import { registry } from "../tools/index.js";
 import { engine } from "../execution_engine/index.js";
 import axios from "axios";
 import { workflow } from "./workflow_manager.js";
+import { validator } from "../validation_engine/index.js";
 
 export interface ToolRouterOptions {
   model?: string;
@@ -20,6 +21,7 @@ export class tool_router {
     let no_tool_retry_count = 0;
     const messages = [...options.messages];
     const tools = registry.getDefinitions();
+    const executedTools = new Set<string>();
 
     if (messages.length > 0 && messages[0].role === "system") {
       messages[0].content += "\n\n" + workflow.getSystemPromptExtension();
@@ -63,6 +65,17 @@ export class tool_router {
           const function_name = tc.function.name;
           const function_args = JSON.parse(tc.function.arguments || "{}");
 
+          const toolSignature = `${function_name}:${JSON.stringify(function_args)}`;
+          if (executedTools.has(toolSignature) && function_name !== "finish") {
+            workflow.transition("Summary");
+            messages.push({
+              role: "system",
+              content: `STOPPING DECISION: Tool '${function_name}' called with identical arguments. Action aborted to prevent execution loop. Transitioning to Summary.`
+            });
+            continue;
+          }
+          executedTools.add(toolSignature);
+
           if (function_name === "finish") {
             workflow.transition("Summary");
             if (messages.length > 0 && messages[0].role === "system") {
@@ -96,13 +109,10 @@ export class tool_router {
 
           if (["write_file", "replace_file_content", "multi_replace_file_content", "edit_file", "patch_file"].includes(function_name)) {
             workflow.transition("Verification");
-            const verify_result = await engine.execute({
-              tool: "run_command",
-              args: { command: "npm run build --if-present && npm run test --if-present" }
-            });
+            const verify_result = await validator.verifyAll(process.cwd());
             messages.push({
               role: "system",
-              content: `[Workflow Auto-Verification] Triggered build/test after file edit:\n${typeof verify_result === "string" ? verify_result : JSON.stringify(verify_result)}\n\nState is now Verification.`
+              content: `[Workflow Auto-Verification] Triggered build/test/lint after file edit:\n${JSON.stringify(verify_result, null, 2)}\n\nState is now Verification.`
             });
           }
         }
@@ -137,6 +147,7 @@ export class tool_router {
     let no_tool_retry_count = 0;
     const messages = [...options.messages];
     const tools = registry.getDefinitions();
+    const executedTools = new Set<string>();
 
     if (messages.length > 0 && messages[0].role === "system") {
       messages[0].content += "\n\n" + workflow.getSystemPromptExtension();
@@ -156,8 +167,6 @@ export class tool_router {
       if (tools.length > 0 && workflow.getCurrentState() !== "Summary") {
         payload.tools = tools;
       }
-
-      console.log("PAYLOAD MESSAGES FOR LLAMA:", JSON.stringify(payload.messages, null, 2));
 
       const response = await axios.post(
         "http://127.0.0.1:8012/v1/chat/completions",
@@ -198,7 +207,9 @@ export class tool_router {
                   const parts = streamBuffer.split("\n");
                   streamBuffer = parts.pop() ?? "";
                   for (const part of parts) {
-                    onToken(colorizeText(part) + "\n");
+                    if (filterStreamLine(part) !== null) {
+                      onToken(part + "\n");
+                    }
                   }
                 }
               }
@@ -224,8 +235,8 @@ export class tool_router {
         });
  
         response.data.on("end", () => {
-          if (streamBuffer) {
-            onToken(colorizeText(streamBuffer));
+          if (streamBuffer && filterStreamLine(streamBuffer) !== null) {
+            onToken(streamBuffer);
           }
           resolve();
         });
@@ -255,6 +266,17 @@ export class tool_router {
           try {
             args = JSON.parse(args_str || "{}");
           } catch (e) {}
+
+          const toolSignature = `${name}:${JSON.stringify(args)}`;
+          if (executedTools.has(toolSignature) && name !== "finish") {
+            workflow.transition("Summary");
+            messages.push({
+              role: "system",
+              content: `STOPPING DECISION: Tool '${name}' called with identical arguments. Action aborted to prevent execution loop. Transitioning to Summary.`
+            });
+            continue;
+          }
+          executedTools.add(toolSignature);
 
           if (name === "finish") {
             workflow.transition("Summary");
@@ -304,14 +326,11 @@ export class tool_router {
           if (["write_file", "replace_file_content", "multi_replace_file_content", "edit_file", "patch_file"].includes(name)) {
             workflow.transition("Verification");
             onToken(`\n\x1b[32m✔ Auto-Verification Triggered...\x1b[0m\n`);
-            const verify_result = await engine.execute({
-              tool: "run_command",
-              args: { command: "npm run build --if-present && npm run test --if-present" }
-            });
-            const v_res_str = typeof verify_result === "string" ? verify_result : JSON.stringify(verify_result);
+            const verify_result = await validator.verifyAll(process.cwd());
+            const v_res_str = JSON.stringify(verify_result, null, 2);
             messages.push({
               role: "system",
-              content: `[Workflow Auto-Verification] Triggered build/test after file edit:\n${v_res_str}\n\nState is now Verification.`
+              content: `[Workflow Auto-Verification] Triggered build/test/lint after file edit:\n${v_res_str}\n\nState is now Verification.`
             });
           }
         }
@@ -341,6 +360,15 @@ export class tool_router {
 }
 
 export const tools_router = new tool_router();
+
+function filterStreamLine(text: string): string | null {
+  if (text.includes("[TOOL CALL]")) return null;
+  if (text.includes("<function-call>")) return null;
+  if (text.includes("</function-call>")) return null;
+  // If it's a raw JSON dump for tools, hide it
+  if (text.trim().startsWith('{"name"') || text.trim().startsWith('{"command"')) return null;
+  return text;
+}
 
 function extractParenthesisContent(str: string, startIdx: number): string | null {
   let parenCount = 0;
@@ -469,83 +497,4 @@ function parseCustomToolCalls(msg: any) {
       }
     }
   }
-}
-
-function colorizeText(text: string): string {
-  // Check if it's a tool call: [TOOL CALL]: name(args)
-  const toolCallPrefix = "[TOOL CALL]:";
-  const startIdx = text.indexOf(toolCallPrefix);
-  if (startIdx !== -1) {
-    const openParenIdx = text.indexOf("(", startIdx);
-    if (openParenIdx !== -1) {
-      const toolName = text.slice(startIdx + toolCallPrefix.length, openParenIdx).trim();
-      const argsStr = extractParenthesisContent(text, openParenIdx);
-      if (argsStr !== null && toolName) {
-        let detail = "";
-        try {
-          const parsed = JSON.parse(argsStr);
-          if (parsed.path) detail = ` (path: \x1b[36m${parsed.path}\x1b[0m)`;
-          else if (parsed.command) detail = ` (cmd: \x1b[35m${parsed.command}\x1b[0m)`;
-          else if (parsed.keyword) detail = ` (keyword: \x1b[32m${parsed.keyword}\x1b[0m)`;
-          else if (parsed.url) detail = ` (url: \x1b[36m${parsed.url}\x1b[0m)`;
-          else if (parsed.action) detail = ` (action: \x1b[32m${parsed.action}\x1b[0m)`;
-        } catch (e) {
-          detail = ` (${argsStr})`;
-        }
-        
-        const prefix = text.slice(0, startIdx);
-        const suffixIdx = text.indexOf(")", openParenIdx + argsStr.length);
-        const suffix = suffixIdx !== -1 ? text.slice(suffixIdx + 1) : "";
-        
-        return `${prefix}\x1b[33m[TOOL CALL]:\x1b[0m \x1b[32m${toolName}\x1b[0m${detail}${suffix}`;
-      }
-    }
-  }
-
-  // Check if it's a JSON block
-  const jsonStr = extractJson(text);
-  if (jsonStr) {
-    try {
-      const parsed = JSON.parse(jsonStr);
-      if (parsed.name) {
-        const toolName = parsed.name;
-        const args = parsed.arguments || {};
-        let detail = "";
-        if (args.path) detail = ` (path: \x1b[36m${args.path}\x1b[0m)`;
-        else if (args.command) detail = ` (cmd: \x1b[35m${args.command}\x1b[0m)`;
-        else if (args.keyword) detail = ` (keyword: \x1b[32m${args.keyword}\x1b[0m)`;
-        
-        const jsonStartIdx = text.indexOf(jsonStr);
-        const prefix = text.slice(0, jsonStartIdx);
-        const suffix = text.slice(jsonStartIdx + jsonStr.length);
-        
-        return `${prefix}\x1b[33m[TOOL CALL]:\x1b[0m \x1b[32m${toolName}\x1b[0m${detail}${suffix}`;
-      }
-    } catch (e) {
-      // Fallback colorizing for unescaped JSON
-      const nameMatch = jsonStr.match(/"name"\s*:\s*"([a-zA-Z0-9_]+)"/);
-      if (nameMatch) {
-        const toolName = nameMatch[1];
-        const argsMatch = jsonStr.match(/"arguments"\s*:\s*(\{[\s\S]*\})/);
-        let detail = "";
-        if (argsMatch) {
-          const argsContent = argsMatch[1];
-          const cmdMatch = argsContent.match(/"command"\s*:\s*"([\s\S]*?)"\s*}/) || argsContent.match(/"command"\s*:\s*"([\s\S]*)"/);
-          const pathMatch = argsContent.match(/"path"\s*:\s*"([\s\S]*?)"/);
-          const keywordMatch = argsContent.match(/"keyword"\s*:\s*"([\s\S]*?)"/);
-          
-          if (pathMatch) detail = ` (path: \x1b[36m${pathMatch[1]}\x1b[0m)`;
-          else if (cmdMatch) detail = ` (cmd: \x1b[35m${cmdMatch[1]}\x1b[0m)`;
-          else if (keywordMatch) detail = ` (keyword: \x1b[32m${keywordMatch[1]}\x1b[0m)`;
-        }
-        const jsonStartIdx = text.indexOf(jsonStr);
-        const prefix = text.slice(0, jsonStartIdx);
-        const suffix = text.slice(jsonStartIdx + jsonStr.length);
-        
-        return `${prefix}\x1b[33m[TOOL CALL]:\x1b[0m \x1b[32m${toolName}\x1b[0m${detail}${suffix}`;
-      }
-    }
-  }
-
-  return text;
 }

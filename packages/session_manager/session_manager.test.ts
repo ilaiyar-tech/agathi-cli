@@ -1,11 +1,13 @@
 import { sessions } from "./session_manager.js";
 import assert from "node:assert";
 
-function test_session_manager() {
+async function test_session_manager() {
   const session1 = sessions.create_session({ name: "Session 1" });
   
   assert.ok(session1.id);
   assert.strictEqual(session1.metadata.name, "Session 1");
+
+  await new Promise(r => setTimeout(r, 5));
 
   const session2 = sessions.create_session({ name: "Session 2" });
   
@@ -29,4 +31,4 @@ function test_session_manager() {
   console.log("session_manager tests passed.");
 }
 
-test_session_manager();
+test_session_manager().catch(console.error);

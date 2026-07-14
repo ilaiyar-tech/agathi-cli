@@ -1,7 +1,10 @@
 import { get_models, get_active_model, set_active_model } from "./provider_manager.js";
+import { unload_active_model } from "../model_manager/index.js";
 import assert from "node:assert";
 
 function test_provider_manager() {
+  unload_active_model(); // reset state for testing
+  
   const models = get_models();
   assert.ok(Array.isArray(models));
 
@@ -15,7 +18,6 @@ function test_provider_manager() {
     assert.strictEqual(e.message, "model_not_found");
   }
 
-  // Assuming provider_catalog has at least one valid model like 'gpt-4' or similar, but since we don't know the exact catalog yet, we just test the throw.
   console.log("provider_manager tests passed.");
 }
 

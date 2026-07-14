@@ -22,18 +22,16 @@ async function test_validation_engine() {
     }
   });
 
-  const typeRes = await validator.validateTypes(testDir);
-  assert.strictEqual(typeRes.valid, true);
-
-  const testRes = await validator.validateTests(testDir);
-  assert.strictEqual(testRes.valid, true);
+  const res1 = await validator.verifyAll(testDir);
+  assert.strictEqual(res1.runtime.valid, true);
+  assert.strictEqual(res1.test.valid, true);
 
   // Introduce a type error
   await fs.writeFile(path.join(testDir, "index.ts"), "export const x: number = 'string';");
   
-  const typeFailRes = await validator.validateTypes(testDir);
-  assert.strictEqual(typeFailRes.valid, false);
-  assert.ok(typeFailRes.errors.length > 0);
+  const res2 = await validator.verifyAll(testDir);
+  assert.strictEqual(res2.runtime.valid, false);
+  assert.ok(res2.runtime.errors.length > 0);
 
   await fs.remove(testDir);
   console.log("validation_engine tests passed.");
