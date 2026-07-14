@@ -51,6 +51,9 @@ const EXECUTION_PROFILES: Record<string, ExecutionProfile> = {
 
 function detectProfile(prompt: string): ExecutionProfile {
   const p = prompt.toLowerCase();
+  if (p.includes("browser") || p.includes("google") || p.includes("bing") || p.includes("web") || p.includes("http") || p.includes("url")) {
+    return EXECUTION_PROFILES.chat;
+  }
   if (
     p.includes("check the files") ||
     p.includes("search files") ||

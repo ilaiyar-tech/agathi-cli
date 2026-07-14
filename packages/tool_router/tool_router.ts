@@ -30,7 +30,7 @@ export class tool_router {
     while (true) {
       const payload: any = {
         messages,
-        temperature: 0
+        temperature: 0.1
       };
 
       if (tools.length > 0) {
@@ -131,13 +131,15 @@ export class tool_router {
     while (true) {
       const payload: any = {
         messages,
-        temperature: 0,
+        temperature: 0.1,
         stream: true
       };
 
       if (tools.length > 0) {
         payload.tools = tools;
       }
+
+      console.log("PAYLOAD MESSAGES FOR LLAMA:", JSON.stringify(payload.messages, null, 2));
 
       const response = await axios.post(
         "http://127.0.0.1:8012/v1/chat/completions",
@@ -453,6 +455,8 @@ function colorizeText(text: string): string {
           if (parsed.path) detail = ` (path: \x1b[36m${parsed.path}\x1b[0m)`;
           else if (parsed.command) detail = ` (cmd: \x1b[35m${parsed.command}\x1b[0m)`;
           else if (parsed.keyword) detail = ` (keyword: \x1b[32m${parsed.keyword}\x1b[0m)`;
+          else if (parsed.url) detail = ` (url: \x1b[36m${parsed.url}\x1b[0m)`;
+          else if (parsed.action) detail = ` (action: \x1b[32m${parsed.action}\x1b[0m)`;
         } catch (e) {
           detail = ` (${argsStr})`;
         }

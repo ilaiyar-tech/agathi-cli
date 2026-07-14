@@ -16,6 +16,9 @@ You MUST select the most specific tool for each task according to these rules:
 - search_files: Use for finding files containing a keyword.
   * Format: [TOOL CALL]: search_files({"keyword": "search_keyword"})
 
+- browser_action: Use ONLY for web-browsing, searching URLs, extracting page text, reading DOM node details, or capturing page screenshots.
+  * Format: [TOOL CALL]: browser_action({"action": "extract_text", "url": "https://google.com"}) // actions: "extract_text", "get_dom", "screenshot"
+
 - run_command: Use ONLY for compiling, running tests, executing scripts, starting servers, git commands, or folder management (mkdir, rm).
   * Rules:
     - NEVER use run_command with cat/echo to create/write files (use write_file instead).
