@@ -7,12 +7,14 @@ registry.register({
   schema: {
     type: "object",
     properties: {
-      command: { type: "string" }
+      command: { type: "string" },
+      timeout: { type: "number", description: "Optional timeout in milliseconds to wait for the command to finish. Defaults to 4000." }
     },
     required: ["command"]
   },
   handler: async (input: any) => {
     const command = String(input.command);
+    const timeout = typeof input.timeout === "number" ? input.timeout : 4000;
 
     const proc = execa({
       shell: true,
@@ -35,7 +37,7 @@ registry.register({
     let finished = false;
     let timer: any;
     const timeoutPromise = new Promise<void>((resolve) => {
-      timer = setTimeout(resolve, 4000);
+      timer = setTimeout(resolve, timeout);
     });
 
     await Promise.race([
