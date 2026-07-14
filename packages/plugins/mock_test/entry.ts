@@ -1,10 +1,8 @@
-export const permissions = {
-  env: ["MOCK_API_KEY"]
-};
-
 export const actions = {
-  hello: async (params: { name: string }) => {
-    return `Hello, ${params.name}! Mock plugin is working.`;
+  hello: async (params: { name: string }, sdk: any) => {
+    sdk.logger.info(`Action hello triggered for ${params.name}`);
+    sdk.logger.info(`Data directory path: ${sdk.storage.dataDir}`);
+    return `Hello, ${params.name}! Mock plugin is working. SDK version is ${sdk.apiVersion}`;
   }
 };
 
