@@ -1,4 +1,5 @@
 import { WorkflowState } from "../context/context_types.js";
+import { eventBus as coreEventBus, RuntimeEvent } from "../core/event_bus.js";
 
 export type WorkflowStateEx =
   | "ContextCreated"
@@ -44,31 +45,46 @@ export type ContextEvent =
   | { type: "Custom"; contextId: string; sessionId: string; executionId: string; metadata: { event: string; [key: string]: any } };
 
 export class EventBus {
-  private listeners: Map<string, Array<(event: any) => void>> = new Map();
-
   publish(event: ContextEvent): void {
-    const list = this.listeners.get(event.type) || [];
-    for (const listener of list) {
-      try {
-        listener(event);
-      } catch (e) {
-        // Suppress observer errors to keep State Machine robust
-      }
-    }
+    // Map ContextEvent structure to RuntimeEvent structure for core compatibility
+    const runtimeEvent: RuntimeEvent = {
+      type: event.type,
+      timestamp: new Date().toISOString(),
+      payload: "payload" in event ? event.payload : {},
+      id: "metadata" in event ? event.metadata.event_id : undefined,
+      parentId: "metadata" in event ? event.metadata.parent_event_id : undefined,
+      metadata: event
+    };
+    coreEventBus.publish(runtimeEvent);
   }
 
   subscribe<T extends ContextEvent["type"]>(
     type: T,
     listener: (event: Extract<ContextEvent, { type: T }>) => void
   ): void {
-    if (!this.listeners.has(type)) {
-      this.listeners.set(type, []);
-    }
-    this.listeners.get(type)!.push(listener);
+    // Adapter wrapper to map Core RuntimeEvent back to ContextEvent
+    coreEventBus.on(type, (coreEvent: RuntimeEvent) => {
+      if (coreEvent.metadata) {
+        listener(coreEvent.metadata as any);
+      } else {
+        // Fallback reconstruction
+        const contextEvent = {
+          type: coreEvent.type,
+          payload: coreEvent.payload,
+          metadata: {
+            event_id: coreEvent.id,
+            parent_event_id: coreEvent.parentId,
+            timestamp: new Date(coreEvent.timestamp).getTime()
+          }
+        };
+        listener(contextEvent as any);
+      }
+    });
   }
 
   clearListeners(): void {
-    this.listeners.clear();
+    // Clear Core Event Bus listeners matching ContextEvent type strings
+    coreEventBus.clearHistory();
   }
 }
 

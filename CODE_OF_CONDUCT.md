@@ -1,35 +1,12 @@
-# Contributor Covenant Code of Conduct
+# Code of Conduct
 
-## Our Pledge
+Please note that all interactions on
+[Python Software Foundation](https://www.python.org/psf-landing/)-supported
+infrastructure is [covered](https://www.python.org/psf/records/board/minutes/2014-01-06/#management-of-the-psfs-web-properties)
+by the [PSF Code of Conduct](https://www.python.org/psf/codeofconduct/),
+which includes all the infrastructure used in the development of Python itself
+(e.g. mailing lists, issue trackers, GitHub, etc.).
 
-We, as contributors and maintainers of the tu2pu project, pledge to make participation in our community a harassment-free experience for everyone, regardless of age, body size, visible or invisible disability, ethnicity, sex characteristics, gender identity and expression, level of experience, education, socio-economic status, nationality, personal appearance, race, religion, or sexual identity and orientation.
+In general, this means that everyone is expected to be **open**, **considerate**, and
+**respectful** of others no matter what their position is within the project.
 
-We pledge to act and interact in ways that contribute to an open, welcoming, diverse, inclusive, and healthy community.
-
-## Our Standards
-
-Examples of behavior that contributes to a positive environment for our community include:
-* Demonstrating empathy and kindness toward other people
-* Being respectful of differing opinions, viewpoints, and experiences
-* Giving and gracefully receiving constructive feedback
-* Accepting responsibility and apologizing to those affected by our mistakes, and learning from the experience
-* Focusing on what is best for the overall community
-
-Examples of unacceptable behavior include:
-* The use of sexualized language or imagery, and unwelcome sexual attention or advances
-* Trolling, insulting or derogatory comments, and personal or political attacks
-* Public or private harassment
-* Publishing others' private information, such as a physical or email address, without their explicit permission
-* Other conduct which could reasonably be considered inappropriate in a professional setting
-
-## Enforcement Responsibilities
-
-Community leaders are responsible for clarifying and enforcing our standards of acceptable behavior and will take appropriate and fair corrective action in response to any behavior they deem inappropriate, threatening, offensive, or harmful.
-
-## Scope
-
-This Code of Conduct applies within all community spaces, and also applies when an individual is officially representing the community in public spaces.
-
-## Contact Information
-
-Instances of abusive, harassing, or otherwise unacceptable behavior may be reported by contacting the project team at conduct@tu2pu.in. All complaints will be reviewed and investigated promptly and fairly.
