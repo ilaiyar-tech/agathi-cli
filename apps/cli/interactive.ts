@@ -408,13 +408,19 @@ export async function launch_interactive(opts: {
                 if (choice?.delta?.content) {
                   const txt = choice.delta.content;
                   
-                  if (txt.startsWith("PROGRESS:")) {
-                    const stage = txt.slice(9);
-                    currentLoaderText = stage;
-                    if (loaderTimer) {
-                      updateLoader();
-                    }
-                    continue;
+                  if (txt.startsWith('{"type":"progress"')) {
+                    try {
+                      const event = JSON.parse(txt);
+                      let stageText = event.stage;
+                      if (event.percent !== undefined) {
+                        stageText += ` (${event.percent}%)`;
+                      }
+                      currentLoaderText = stageText;
+                      if (loaderTimer) {
+                        updateLoader();
+                      }
+                      continue;
+                    } catch (e) {}
                   }
 
                   assistantContent += txt;

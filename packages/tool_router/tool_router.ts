@@ -5,6 +5,7 @@ import axios from "axios";
 import { workflow } from "./workflow_manager.js";
 import { validator } from "../validation_engine/index.js";
 import { ContextOS } from "../context_engine/index.js";
+import { eventBus } from "../core/event_bus.js";
 
 export interface ToolRouterOptions {
   model?: string;
@@ -401,16 +402,42 @@ export class tool_router {
           } else if (name === "whatsapp") {
             stageMsg = "Sending alert...";
           }
-          
+
+          const progressListener = (event: any) => {
+            if (event.type === "TOOL_PROGRESS" && onToken) {
+              try {
+                onToken(JSON.stringify({
+                  type: "progress",
+                  tool: name,
+                  stage: event.payload.stage,
+                  percent: event.payload.percent,
+                  status: event.payload.status || "running"
+                }));
+              } catch (err) {}
+            }
+          };
+
+          eventBus.on("TOOL_PROGRESS", progressListener);
+
           if (onToken) {
-            onToken(`PROGRESS:${stageMsg}`);
+            onToken(JSON.stringify({
+              type: "progress",
+              tool: name,
+              stage: stageMsg,
+              status: "running"
+            }));
           }
 
           const startTime = Date.now();
-          const result = await engine.execute({
-            tool: name,
-            args
-          });
+          let result: any;
+          try {
+            result = await engine.execute({
+              tool: name,
+              args
+            });
+          } finally {
+            eventBus.off("TOOL_PROGRESS", progressListener);
+          }
           const durationMs = Date.now() - startTime;
 
           // Record execution in ContextOS database
@@ -441,7 +468,12 @@ export class tool_router {
           if (["write_file", "replace_file_content", "multi_replace_file_content", "edit_file", "patch_file"].includes(name)) {
             workflow.transition("Verification");
             if (onToken) {
-              onToken(`PROGRESS:Verifying changes...`);
+              onToken(JSON.stringify({
+                type: "progress",
+                tool: name,
+                stage: "Verifying changes...",
+                status: "running"
+              }));
             }
             const verify_result = await validator.verifyAll(process.cwd());
             const v_res_str = JSON.stringify(verify_result, null, 2);

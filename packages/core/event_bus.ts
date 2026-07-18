@@ -12,7 +12,8 @@ export type EventType =
   | "MODEL_SWITCHED"
   | "ZIP_CREATED"
   | "DOWNLOAD_READY"
-  | "PLUGIN_TRIGGERED";
+  | "PLUGIN_TRIGGERED"
+  | "TOOL_PROGRESS";
 
 export interface RuntimeEvent {
   type: EventType;
