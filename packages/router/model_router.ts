@@ -2,6 +2,15 @@ import axios from "axios";
 import { start_model } from "../model_registry/index.js";
 import { stream_chat } from "../streaming/index.js";
 import { get_active_model, set_active_model } from "../model_manager/index.js";
+import http from "node:http";
+import https from "node:https";
+
+const httpAgent = new http.Agent({ keepAlive: true, maxSockets: 100 });
+const httpsAgent = new https.Agent({ keepAlive: true, maxSockets: 100 });
+
+axios.defaults.httpAgent = httpAgent;
+axios.defaults.httpsAgent = httpsAgent;
+axios.defaults.timeout = 30000; // 30s default timeout
 
 export async function getModelEndpoint(): Promise<string> {
   // 1. Check local model server on port 8012
@@ -43,7 +52,13 @@ export async function postModelRequest(path: string, data: any, config?: any) {
   }
 }
 
+let ensuringPromise: Promise<void> | null = null;
+
 async function ensure(model: string) {
+  if (ensuringPromise) {
+    await ensuringPromise;
+  }
+
   const current_active = get_active_model();
   let is_healthy = false;
   try {
@@ -55,25 +70,31 @@ async function ensure(model: string) {
   } catch (err) {}
 
   if (current_active !== model || !is_healthy) {
-    try {
-      await start_model(model as any);
-      set_active_model(model);
-      await new Promise(r => setTimeout(r, 10000));
-    } catch (e) {
-      // Offline fallback: set active model even if spawning fails, so we can try running against whatever is on 8012
-      set_active_model(model);
-    }
+    ensuringPromise = (async () => {
+      try {
+        await start_model(model as any);
+        set_active_model(model);
+        await new Promise(r => setTimeout(r, 10000));
+      } catch (e) {
+        // Offline fallback: set active model even if spawning fails, so we can try running against whatever is on 8012
+        set_active_model(model);
+      } finally {
+        ensuringPromise = null;
+      }
+    })();
+    await ensuringPromise;
   }
 }
 
-async function chat(model: string, messages: any[]) {
+async function chat(model: string, messages: any[], signal?: AbortSignal) {
   await ensure(model);
   const response = await postModelRequest(
     "/v1/chat/completions",
     {
       messages,
       temperature: 0
-    }
+    },
+    { signal }
   );
 
   return {
@@ -81,10 +102,10 @@ async function chat(model: string, messages: any[]) {
   };
 }
 
-async function stream(model: string, messages: any[], onToken: (token: string) => void) {
+async function stream(model: string, messages: any[], onToken: (token: string) => void, signal?: AbortSignal) {
   await ensure(model);
   const base = await getModelEndpoint();
-  await stream_chat(messages, onToken, base);
+  await stream_chat(messages, onToken, base, signal);
 }
 
 export const router = {
@@ -104,8 +125,8 @@ export const router = {
     return chat("coder_pro", messages);
   },
 
-  stream_coder(messages: any[], onToken: (token: string) => void) {
-    return stream("coder_pro", messages, onToken);
+  stream_coder(messages: any[], onToken: (token: string) => void, signal?: AbortSignal) {
+    return stream("coder_pro", messages, onToken, signal);
   },
 
   reasoner(messages: any[]) {

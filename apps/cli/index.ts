@@ -6,6 +6,28 @@ import readline from "node:readline/promises";
 import { stdin, stdout } from "node:process";
 import fs from "node:fs";
 
+function restoreTerminal() {
+  // Show cursor
+  process.stdout.write("\x1b[?25h");
+  // Reset styles and colors
+  process.stdout.write("\x1b[0m");
+}
+
+process.on("exit", restoreTerminal);
+process.on("SIGINT", () => {
+  restoreTerminal();
+  process.exit(130);
+});
+process.on("SIGTERM", () => {
+  restoreTerminal();
+  process.exit(143);
+});
+process.on("unhandledRejection", (reason) => {
+  console.error(chalk.red("\nUnhandled promise rejection:"), reason);
+  restoreTerminal();
+  process.exit(1);
+});
+
 import { sessions } from "../../packages/session_manager/index.js";
 import { planner } from "../../packages/prompt_planner/index.js";
 import { Transcoder } from "../../packages/transcoder/index.js";
@@ -15,6 +37,7 @@ import { register_project_commands } from "./commands/project.js";
 import { register_builder_commands } from "./commands/builder.js";
 import { register_deploy_commands } from "./commands/deploy.js";
 import { TuiConsoleManager } from "../../packages/workspace_terminal/index.js";
+import { PROMPT_PREFIX } from "../../packages/core/index.js";
 
 const SERVER = "http://localhost:8100";
 
@@ -288,7 +311,7 @@ program
       const spinner = opts.stream ? null : ora({ text: "Thinking...", color: "cyan" }).start();
       try {
         if (opts.stream) {
-          process.stdout.write(chalk.cyan("\nத › "));
+          process.stdout.write(chalk.cyan(`\n${PROMPT_PREFIX} `));
           await stream_chat_api(trimmed, opts.session, (token: string) => {
             process.stdout.write(token);
           });
@@ -297,7 +320,7 @@ program
           const result = await block_chat_api(trimmed, opts.session);
           spinner?.stop();
           console.log();
-          process.stdout.write(chalk.cyan("த › "));
+          process.stdout.write(chalk.cyan(`${PROMPT_PREFIX} `));
           console.log();
           printMarkdown(result.content);
           console.log();

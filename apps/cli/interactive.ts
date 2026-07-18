@@ -17,6 +17,7 @@ import { AgentOrchestrationLayer } from "../../packages/agent_orchestration/agen
 import { memory } from "../../packages/memory/memory_engine.js";
 import { get_active_model, set_active_model, list_models } from "../../packages/model_manager/index.js";
 import { getModelEndpoint, postModelRequest } from "../../packages/router/index.js";
+import { PROMPT_PREFIX } from "../../packages/core/index.js";
 
 marked.setOptions({
   renderer: new TerminalRenderer() as any
@@ -160,6 +161,16 @@ export async function launch_interactive(opts: {
   };
 
   const historyLines = await load_history();
+  let loaderTimer: any = null;
+  const clearLoader = () => {
+    if (loaderTimer) {
+      clearInterval(loaderTimer);
+      loaderTimer = null;
+      if (process.stdout.isTTY) {
+        process.stdout.write("\r\x1b[K" + chalk.cyan(`${PROMPT_PREFIX} `));
+      }
+    }
+  };
 
   console.clear();
   banner();
@@ -213,7 +224,7 @@ export async function launch_interactive(opts: {
     rl.prompt();
   });
 
-  const prompt_label = () => chalk.magenta("த › ");
+  const prompt_label = () => chalk.magenta(`${PROMPT_PREFIX} `);
   rl.setPrompt(prompt_label());
   rl.prompt();
 
@@ -325,29 +336,21 @@ export async function launch_interactive(opts: {
       // --- END OFFLINE FALLBACK ---
 
       if (state.streaming) {
-        let loaderTimer: any = null;
         const loaderFrames = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
         let frameIdx = 0;
 
         const updateLoader = () => {
           if (loaderTimer) {
-              process.stdout.write("\r\x1b[K" + chalk.cyan("த › ") + chalk.gray(loaderFrames[frameIdx] + " " + currentLoaderText));
+              process.stdout.write("\r\x1b[K" + chalk.cyan(`${PROMPT_PREFIX} `) + chalk.gray(loaderFrames[frameIdx] + " " + currentLoaderText));
           }
         };
  
-        process.stdout.write("\n" + chalk.cyan("த › ") + chalk.gray(loaderFrames[frameIdx] + " " + currentLoaderText));
+        process.stdout.write("\n" + chalk.cyan(`${PROMPT_PREFIX} `) + chalk.gray(loaderFrames[frameIdx] + " " + currentLoaderText));
+        if (loaderTimer) clearInterval(loaderTimer);
         loaderTimer = setInterval(() => {
           frameIdx = (frameIdx + 1) % loaderFrames.length;
           updateLoader();
         }, 80);
- 
-        const clearLoader = () => {
-          if (loaderTimer) {
-            clearInterval(loaderTimer);
-            loaderTimer = null;
-             process.stdout.write("\r\x1b[K" + chalk.cyan("த › "));
-          }
-        };
 
         const res = await fetch(`${SERVER}/v1/chat/completions`, {
           method: "POST",
@@ -428,10 +431,11 @@ export async function launch_interactive(opts: {
                      clearLoader();
                      process.stdout.write(txt);
                      if (txt.endsWith("\n")) {
-                       loaderTimer = setInterval(() => {
-                          frameIdx = (frameIdx + 1) % loaderFrames.length;
-                          updateLoader();
-                        }, 80);
+                        if (loaderTimer) clearInterval(loaderTimer);
+                        loaderTimer = setInterval(() => {
+                           frameIdx = (frameIdx + 1) % loaderFrames.length;
+                           updateLoader();
+                         }, 80);
                      }
                   } else {
                      clearLoader();
@@ -465,7 +469,7 @@ export async function launch_interactive(opts: {
         
         spinner?.stop();
         console.log();
-        console.log(chalk.cyan("த ›"));
+        console.log(chalk.cyan(PROMPT_PREFIX));
         printMarkdown(replyContent);
         console.log();
       }
@@ -477,6 +481,7 @@ export async function launch_interactive(opts: {
         console.log(chalk.red(`\n${friendly}`));
       }
     } finally {
+      clearLoader();
       currentTask = null;
       isExecuting = false;
     }

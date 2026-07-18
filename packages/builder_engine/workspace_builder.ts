@@ -47,7 +47,7 @@ export class workspace_builder {
   ): Promise<{ projectPath: string; zipPath: string; files: { path: string; content: string }[]; logs: string[] }> {
     const logs: string[] = [];
     const addLog = (msg: string) => {
-      console.log(msg);
+      // console.log(msg);
       logs.push(msg);
     };
 

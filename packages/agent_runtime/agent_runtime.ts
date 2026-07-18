@@ -7,6 +7,7 @@ import { registry } from "../tools/index.js";
 import { ContextOS } from "../context_engine/index.js";
 import { WorkspaceChunk } from "../context/context_interfaces.js";
 import { IntentAnalyzer } from "../prompt_intelligence/prompt_intelligence.js";
+import { logger } from "../logger/index.js";
 
 export interface ExecutionProfile {
   intent: string;
@@ -151,6 +152,13 @@ export class agent_runtime {
     const contextId = `ctx-${session_id}`;
     const executionId = `exec-${crypto.randomUUID()}`;
 
+    logger.info({
+      event: "execution_start",
+      sessionId: session_id,
+      executionId,
+      prompt
+    }, `Starting execution ${executionId} for session ${session_id}`);
+
     // Initialize state machine
     ContextOS.state.startExecution(contextId, session_id, executionId);
 
@@ -255,13 +263,24 @@ export class agent_runtime {
     await router.ensure(model);
 
     ContextOS.state.transition("ToolExecution", "Running interactive tool selection loop");
-    const response = await tools_router.chat({ messages, model });
+    const response = await tools_router.chat({ 
+      messages, 
+      model,
+      contextId,
+      sessionId: session_id,
+      executionId
+    });
 
     ContextOS.state.complete();
+    logger.info({
+      event: "execution_complete",
+      sessionId: session_id,
+      executionId
+    }, `Completed execution ${executionId} for session ${session_id}`);
     return {
       id: executionId,
       session_id,
-      content: response.content
+      content: response?.content || ""
     };
   }
 
@@ -272,6 +291,13 @@ export class agent_runtime {
   ) {
     const contextId = `ctx-${session_id}`;
     const executionId = `exec-${crypto.randomUUID()}`;
+
+    logger.info({
+      event: "execution_stream_start",
+      sessionId: session_id,
+      executionId,
+      prompt
+    }, `Starting streaming execution ${executionId} for session ${session_id}`);
 
     ContextOS.state.startExecution(contextId, session_id, executionId);
 
@@ -346,7 +372,7 @@ export class agent_runtime {
         const result = await tools_router.chat_stream({ messages, model: profile.llm }, onToken);
         
         ContextOS.state.complete();
-        return { id: executionId, session_id, content: result.content };
+        return { id: executionId, session_id, content: result?.content || "" };
       }
     }
 
@@ -370,10 +396,21 @@ export class agent_runtime {
     await router.ensure(model);
 
     ContextOS.state.transition("ToolExecution", "Running interactive tool selection stream");
-    const result = await tools_router.chat_stream({ messages, model }, onToken);
+    const result = await tools_router.chat_stream({ 
+      messages, 
+      model,
+      contextId,
+      sessionId: session_id,
+      executionId
+    }, onToken);
 
     ContextOS.state.complete();
-    return { id: executionId, session_id, content: result.content };
+    logger.info({
+      event: "execution_stream_complete",
+      sessionId: session_id,
+      executionId
+    }, `Completed streaming execution ${executionId} for session ${session_id}`);
+    return { id: executionId, session_id, content: result?.content || "" };
   }
 
 }

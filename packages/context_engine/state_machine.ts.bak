@@ -166,32 +166,7 @@ export class ExecutionStateMachine {
   }
 
   complete(): void {
-    if (this.currentState === "Task") {
-      this.transition("Planning", "Preparing execution");
-    }
-
-    if (this.currentState === "Planning") {
-      this.transition("Execution", "Starting execution");
-    }
-
-    if (this.currentState === "Execution") {
-      this.transition("Verification", "Verifying execution");
-    }
-
-    if (this.currentState === "Verification") {
-      this.transition("Summary", "Generating summary");
-    }
-
-    if (this.currentState !== "Summary") {
-      throw new TransitionError(
-        this.currentState,
-        "Completed",
-        "Execution must reach Summary before completion."
-      );
-    }
-
     this.transition("Completed", "Task execution finished successfully");
-
     const metadata = this.createEventMetadata();
     eventBus.publish({
       type: "ExecutionCompleted",

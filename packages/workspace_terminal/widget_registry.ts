@@ -28,6 +28,9 @@ export class WidgetRegistry {
   private static widgets = new Map<string, WorkspaceWidget>();
 
   static register(widget: WorkspaceWidget) {
+    if (this.widgets.has(widget.id)) {
+      return;
+    }
     widget.state = "CREATED";
     this.widgets.set(widget.id, widget);
     widget.state = "ACTIVE";

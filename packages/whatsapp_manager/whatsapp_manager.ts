@@ -1,5 +1,6 @@
 import { memory } from "../memory/memory_engine.js";
 import { ENV } from "../config/index.js";
+import { logger } from "../logger/index.js";
 
 export class WhatsAppManager {
   private static instance: WhatsAppManager;
@@ -88,16 +89,16 @@ export class WhatsAppManager {
     try {
       memory.database.prepare("DELETE FROM whatsapp_sessions WHERE id = 'admin_session'").run();
     } catch (e) {
-      console.error("Failed to delete WhatsApp session:", e);
+      logger.error(`Failed to delete WhatsApp session: ${e}`);
     }
   }
 
   sendAlert(type: string, message: string): boolean {
     const formattedMessage = `*🤖 Ilaiyar Admin Notification*\n*Type:* ${type}\n*Time:* ${new Date().toLocaleString()}\n\n${message}`;
-    console.log(`[WhatsApp Alert to ${this.adminNumber}]:\n${formattedMessage}`);
+    logger.info(`[WhatsApp Alert to ${this.adminNumber}]:\n${formattedMessage}`);
     
     if (this.status !== "Connected") {
-      console.warn("WhatsApp is not linked; alert not sent to device.");
+      logger.warn("WhatsApp is not linked; alert not sent to device.");
       return false;
     }
     return true;

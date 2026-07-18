@@ -19,7 +19,7 @@ registry.register({
     const proc = execa({
       shell: true,
       detached: true,
-      cleanup: false
+      cleanup: true
     })`${command}`;
 
     // Prevent unhandled promise rejection crashes
@@ -27,7 +27,7 @@ registry.register({
 
     let stdoutData = "";
     let stderrData = "";
-    proc.stdout?.on("data", (chunk) => {
+    proc.stdout?.on("on" in (proc.stdout || {}) ? "data" : "data", (chunk) => {
       stdoutData += chunk.toString();
     });
     proc.stderr?.on("data", (chunk) => {
@@ -40,25 +40,43 @@ registry.register({
       timer = setTimeout(resolve, timeout);
     });
 
-    await Promise.race([
-      proc.then(() => { finished = true; }),
-      timeoutPromise
-    ]);
-
-    clearTimeout(timer);
+    try {
+      await Promise.race([
+        proc.then(
+          () => { finished = true; },
+          () => { finished = true; }
+        ),
+        timeoutPromise
+      ]);
+    } finally {
+      clearTimeout(timer);
+    }
 
     if (finished) {
-      const res = await proc;
-      return {
-        stdout: res.stdout,
-        stderr: res.stderr
-      };
+      try {
+        const res = await proc;
+        return {
+          stdout: res.stdout,
+          stderr: res.stderr
+        };
+      } catch (err: any) {
+        return {
+          stdout: err.stdout || stdoutData,
+          stderr: err.stderr || err.message || String(err)
+        };
+      }
     } else {
-      // Unref the child process so it doesn't block the CLI from exiting
-      proc.unref();
+      // Cleanly kill the child process group to avoid resource leaks
+      try {
+        if (proc.pid) {
+          process.kill(-proc.pid, "SIGKILL");
+        } else {
+          proc.kill("SIGKILL");
+        }
+      } catch (err) {}
       return {
-        stdout: stdoutData + "\n... [Command is still running in the background]",
-        stderr: stderrData
+        stdout: stdoutData + "\n... [Command timed out and was killed]",
+        stderr: stderrData + "\n[Command timed out]"
       };
     }
   }

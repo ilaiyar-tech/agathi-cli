@@ -57,3 +57,11 @@ export function stop_model(){
   }
 
 }
+
+process.on("exit", () => {
+  if (process_ref) {
+    try {
+      process_ref.kill("SIGKILL");
+    } catch (e) {}
+  }
+});

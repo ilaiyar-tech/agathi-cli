@@ -3,7 +3,8 @@ import axios from "axios";
 export async function stream_chat(
   messages:any[],
   onToken:(token:string)=>void,
-  base_url="https://api.tu2pu.in"
+  base_url="https://api.tu2pu.in",
+  signal?: AbortSignal
 ){
 
   const response=await axios.post(
@@ -13,12 +14,25 @@ export async function stream_chat(
       stream:true
     },
     {
-      responseType:"stream"
+      responseType:"stream",
+      signal
     }
   );
 
+  let aborted = false;
+  const onAbort = () => {
+    aborted = true;
+    try {
+      response.data.destroy();
+    } catch (e) {}
+  };
+  if (signal) {
+    signal.addEventListener("abort", onAbort);
+  }
+
   let buffer="";
   response.data.on("data",(chunk:Buffer)=>{
+      if (aborted) return;
       buffer+=chunk.toString();
       const lines=buffer.split("\n");
       buffer=lines.pop()??"";
@@ -59,10 +73,20 @@ export async function stream_chat(
 
       response.data.on(
         "end",
-        ()=>resolve()
+        ()=>{
+          if (signal) signal.removeEventListener("abort", onAbort);
+          if (aborted) {
+            reject(new Error("Stream aborted"));
+          } else {
+            resolve();
+          }
+        }
       );
 
-      response.data.on("error",reject);
+      response.data.on("error",(err: any)=>{
+        if (signal) signal.removeEventListener("abort", onAbort);
+        reject(err);
+      });
 
     }
   );

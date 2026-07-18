@@ -82,7 +82,7 @@ async function test_tool_router() {
     });
 
     assert.strictEqual(callCount, 3);
-    assert.strictEqual(result.content, "The command output was hello");
+    assert.strictEqual(result?.content, "The command output was hello");
     
     console.log("tool_router tests passed.");
   } finally {

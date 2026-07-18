@@ -8,7 +8,39 @@ export class SessionMemory {
     `).run(id, ownerId || null);
   }
 
+  private pruneSessions(): void {
+    try {
+      const maxSessions = 50;
+      const rows = memory.database.prepare(`
+        select id from sessions order by started_at desc limit -1 offset ?
+      `).all(maxSessions) as any[];
+
+      if (rows.length > 0) {
+        const ids = rows.map(r => r.id);
+        const placeholders = ids.map(() => "?").join(",");
+        
+        // Delete sessions
+        memory.database.prepare(`
+          delete from sessions where id in (${placeholders})
+        `).run(...ids);
+        
+        // Delete legacy memory messages for those sessions
+        memory.database.prepare(`
+          delete from memory where session_id in (${placeholders})
+        `).run(...ids);
+        
+        // Delete contexts (cascades deletes to all context-linked history tables)
+        memory.database.prepare(`
+          delete from contexts where id not in (select context_id from sessions)
+        `).run();
+      }
+    } catch (e) {
+      // Ignore pruning errors to keep operations safe
+    }
+  }
+
   createSession(id: string, contextId: string, agentId?: string, metadata: Record<string, any> = {}): Session {
+    this.pruneSessions();
     this.createContext(contextId, agentId);
     
     const session: Session = {

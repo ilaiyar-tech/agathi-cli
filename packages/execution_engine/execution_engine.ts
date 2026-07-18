@@ -9,7 +9,7 @@ export interface ExecutionResult {
   output: string;
 }
 
-export type ToolHandler = (args: any) => Promise<string> | string;
+export type ToolHandler = (args: any) => Promise<any> | any;
 
 export class execution_engine {
   private registry = new Map<string, ToolHandler>();
@@ -24,22 +24,34 @@ export class execution_engine {
       return {
         step,
         success: false,
-        output: `Tool "${step.tool}" not found.`
+        output: JSON.stringify({ error: `Tool "${step.tool}" not found.` })
       };
     }
 
     try {
-      const output = await handler(step.args);
+      const result = await handler(step.args);
+      let success = true;
+      let outputStr = "";
+
+      if (result && typeof result === "object") {
+        if (result.success === false || result.error) {
+          success = false;
+        }
+        outputStr = JSON.stringify(result);
+      } else {
+        outputStr = String(result);
+      }
+
       return {
         step,
-        success: true,
-        output
+        success,
+        output: outputStr
       };
     } catch (e: any) {
       return {
         step,
         success: false,
-        output: e.message || "Unknown error executing tool"
+        output: JSON.stringify({ error: e.message || "Unknown error executing tool" })
       };
     }
   }

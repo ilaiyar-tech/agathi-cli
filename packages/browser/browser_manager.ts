@@ -16,7 +16,7 @@ export class BrowserManager {
     const context = await this.browser!.newContext();
     const page = await context.newPage();
     try {
-      await page.goto(url, { waitUntil: 'networkidle' });
+      await page.goto(url, { waitUntil: 'networkidle', timeout: 10000 });
       await page.evaluate(() => {
         const elements = document.querySelectorAll('script, style');
         elements.forEach(el => el.remove());
@@ -38,7 +38,7 @@ export class BrowserManager {
     const context = await this.browser!.newContext();
     const page = await context.newPage();
     try {
-      await page.goto(url, { waitUntil: 'networkidle' });
+      await page.goto(url, { waitUntil: 'networkidle', timeout: 10000 });
       const result = await page.evaluate(() => {
         const elements = Array.from(document.querySelectorAll('a, button, input'));
         return elements.map(el => ({
@@ -60,7 +60,7 @@ export class BrowserManager {
     const context = await this.browser!.newContext();
     const page = await context.newPage();
     try {
-      await page.goto(url, { waitUntil: 'networkidle' });
+      await page.goto(url, { waitUntil: 'networkidle', timeout: 10000 });
       await page.screenshot({ path: path, fullPage: true });
     } finally {
       await page.close();

@@ -4,10 +4,15 @@ import { engine } from "../execution_engine/index.js";
 import axios from "axios";
 import { workflow } from "./workflow_manager.js";
 import { validator } from "../validation_engine/index.js";
+import { ContextOS } from "../context_engine/index.js";
 
 export interface ToolRouterOptions {
   model?: string;
   messages: any[];
+  signal?: AbortSignal;
+  contextId?: string;
+  sessionId?: string;
+  executionId?: string;
 }
 
 export class tool_router {
@@ -29,7 +34,19 @@ export class tool_router {
       messages.unshift({ role: "system", content: workflow.getSystemPromptExtension() });
     }
 
+    const MAX_ITERATIONS = 20;
+    let iteration = 0;
+
     while (true) {
+      if (iteration++ >= MAX_ITERATIONS) {
+        workflow.transition("Summary");
+        messages.push({
+          role: "system",
+          content: `ITERATION LIMIT EXCEEDED: Reached maximum number of tool calls (${MAX_ITERATIONS}). Transitioning to Summary to prevent recursion loops.`
+        });
+        break;
+      }
+
       const payload: any = {
         messages,
         temperature: 0.1,
@@ -44,7 +61,10 @@ export class tool_router {
       const response = await postModelRequest(
         "/v1/chat/completions",
         payload,
-        { headers: { "Connection": "close" } }
+        { 
+          headers: { "Connection": "close" },
+          signal: options.signal
+        }
       );
 
       const message = response.data.choices?.[0]?.message;
@@ -95,10 +115,28 @@ export class tool_router {
             continue;
           }
 
+          const startTime = Date.now();
           const result = await engine.execute({
             tool: function_name,
             args: function_args
           });
+          const durationMs = Date.now() - startTime;
+
+          // Record execution in ContextOS database
+          if (options.contextId && options.executionId && options.sessionId) {
+            try {
+              ContextOS.tools.recordToolExecution({
+                contextId: options.contextId,
+                executionId: options.executionId,
+                sessionId: options.sessionId,
+                toolName: function_name,
+                args: function_args,
+                output: typeof result.output === "string" ? result.output : JSON.stringify(result.output),
+                success: result.success,
+                durationMs
+              });
+            } catch (err) {}
+          }
 
           messages.push({
             role: "tool",
@@ -137,7 +175,14 @@ export class tool_router {
   }
 
   async chat_stream(
-    options: { messages: any[], model?: string },
+    options: { 
+      messages: any[], 
+      model?: string, 
+      signal?: AbortSignal,
+      contextId?: string,
+      sessionId?: string,
+      executionId?: string
+    },
     onToken: (token: string) => void
   ) {
     if (options.model === "chat") {
@@ -156,7 +201,19 @@ export class tool_router {
       messages.unshift({ role: "system", content: workflow.getSystemPromptExtension() });
     }
 
+    const MAX_ITERATIONS = 20;
+    let iteration = 0;
+
     while (true) {
+      if (iteration++ >= MAX_ITERATIONS) {
+        workflow.transition("Summary");
+        messages.push({
+          role: "system",
+          content: `ITERATION LIMIT EXCEEDED: Reached maximum number of tool calls (${MAX_ITERATIONS}). Transitioning to Summary to prevent recursion loops.`
+        });
+        break;
+      }
+
       const payload: any = {
         messages,
         temperature: 0.1,
@@ -174,7 +231,8 @@ export class tool_router {
         payload,
         { 
           responseType: "stream",
-          headers: { "Connection": "close" }
+          headers: { "Connection": "close" },
+          signal: options.signal
         }
       );
 
@@ -183,66 +241,88 @@ export class tool_router {
       let has_tool_calls = false;
       let streamBuffer = "";
 
-      await new Promise<void>((resolve, reject) => {
-        let buffer = "";
-        response.data.on("data", (chunk: Buffer) => {
-          buffer += chunk.toString();
-          const lines = buffer.split("\n");
-          buffer = lines.pop() ?? "";
- 
-          for (const line of lines) {
-            if (!line.startsWith("data:")) continue;
-            const json = line.replace("data:", "").trim();
-            if (json === "[DONE]") continue;
- 
-            try {
-              const obj = JSON.parse(json);
-              const choice = obj.choices?.[0];
-              if (!choice) continue;
- 
-              const delta = choice.delta;
-              if (delta.content) {
-                content += delta.content;
-                streamBuffer += delta.content;
-                if (streamBuffer.includes("\n")) {
-                  const parts = streamBuffer.split("\n");
-                  streamBuffer = parts.pop() ?? "";
-                  for (const part of parts) {
-                    if (filterStreamLine(part) !== null) {
-                      onToken(part + "\n");
+      let aborted = false;
+      const onAbort = () => {
+        aborted = true;
+        try {
+          response.data.destroy();
+        } catch (e) {}
+      };
+      if (options.signal) {
+        options.signal.addEventListener("abort", onAbort);
+      }
+
+      try {
+        await new Promise<void>((resolve, reject) => {
+          let buffer = "";
+          response.data.on("data", (chunk: Buffer) => {
+            if (aborted) return;
+            buffer += chunk.toString();
+            const lines = buffer.split("\n");
+            buffer = lines.pop() ?? "";
+   
+            for (const line of lines) {
+              if (!line.startsWith("data:")) continue;
+              const json = line.replace("data:", "").trim();
+              if (json === "[DONE]") continue;
+   
+              try {
+                const obj = JSON.parse(json);
+                const choice = obj.choices?.[0];
+                if (!choice) continue;
+   
+                const delta = choice.delta;
+                if (delta.content) {
+                  content += delta.content;
+                  streamBuffer += delta.content;
+                  if (streamBuffer.includes("\n")) {
+                    const parts = streamBuffer.split("\n");
+                    streamBuffer = parts.pop() ?? "";
+                    for (const part of parts) {
+                      if (filterStreamLine(part) !== null) {
+                        onToken(part + "\n");
+                      }
                     }
                   }
                 }
-              }
- 
-              if (delta.tool_calls) {
-                has_tool_calls = true;
-                for (const tc of delta.tool_calls) {
-                  const idx = tc.index ?? 0;
-                  if (!tool_calls_map[idx]) {
-                    tool_calls_map[idx] = {
-                      id: tc.id || "",
-                      type: "function",
-                      function: { name: "", arguments: "" }
-                    };
+   
+                if (delta.tool_calls) {
+                  has_tool_calls = true;
+                  for (const tc of delta.tool_calls) {
+                    const idx = tc.index ?? 0;
+                    if (!tool_calls_map[idx]) {
+                      tool_calls_map[idx] = {
+                        id: tc.id || "",
+                        type: "function",
+                        function: { name: "", arguments: "" }
+                      };
+                    }
+                    if (tc.id) tool_calls_map[idx].id = tc.id;
+                    if (tc.function?.name) tool_calls_map[idx].function.name += tc.function.name;
+                    if (tc.function?.arguments) tool_calls_map[idx].function.arguments += tc.function.arguments;
                   }
-                  if (tc.id) tool_calls_map[idx].id = tc.id;
-                  if (tc.function?.name) tool_calls_map[idx].function.name += tc.function.name;
-                  if (tc.function?.arguments) tool_calls_map[idx].function.arguments += tc.function.arguments;
                 }
-              }
-            } catch (e) {}
-          }
+              } catch (e) {}
+            }
+          });
+   
+          response.data.on("end", () => {
+            if (aborted) {
+              reject(new Error("Stream aborted"));
+              return;
+            }
+            if (streamBuffer && filterStreamLine(streamBuffer) !== null) {
+              onToken(streamBuffer);
+            }
+            resolve();
+          });
+          response.data.on("error", (err: any) => reject(err));
         });
- 
-        response.data.on("end", () => {
-          if (streamBuffer && filterStreamLine(streamBuffer) !== null) {
-            onToken(streamBuffer);
-          }
-          resolve();
-        });
-        response.data.on("error", (err: any) => reject(err));
-      });
+      } finally {
+        if (options.signal) {
+          options.signal.removeEventListener("abort", onAbort);
+        }
+      }
 
       const dummyMessage = { content, tool_calls: undefined as any };
       parseCustomToolCalls(dummyMessage);
@@ -310,10 +390,28 @@ export class tool_router {
             onToken(`\n\x1b[35m⚙ Tool:\x1b[36m ${name}\x1b[0m\n`);
           }
 
+          const startTime = Date.now();
           const result = await engine.execute({
             tool: name,
             args
           });
+          const durationMs = Date.now() - startTime;
+
+          // Record execution in ContextOS database
+          if (options.contextId && options.executionId && options.sessionId) {
+            try {
+              ContextOS.tools.recordToolExecution({
+                contextId: options.contextId,
+                executionId: options.executionId,
+                sessionId: options.sessionId,
+                toolName: name,
+                args,
+                output: typeof result.output === "string" ? result.output : JSON.stringify(result.output),
+                success: result.success,
+                durationMs
+              });
+            } catch (err) {}
+          }
 
           const result_str = typeof result === "string" ? result : JSON.stringify(result);
 

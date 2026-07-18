@@ -22,10 +22,17 @@ registry.register({
 
     const results: string[] = [];
 
-    async function scan(dir: string): Promise<void> {
+    let totalFilesScanned = 0;
+    const MAX_FILES_TO_SCAN = 1000;
+
+    async function scan(dir: string, depth = 0): Promise<void> {
+      if (depth > 10) return;
+      if (totalFilesScanned > MAX_FILES_TO_SCAN) return;
+
       const entries = await fs.readdir(dir);
 
       for (const entry of entries) {
+        if (totalFilesScanned > MAX_FILES_TO_SCAN) break;
         const full_path = path.join(dir, entry);
         const stat = await fs.stat(full_path);
 
@@ -42,8 +49,9 @@ registry.register({
             continue;
           }
 
-          await scan(full_path);
+          await scan(full_path, depth + 1);
         } else {
+          totalFilesScanned++;
           const lowerEntry = entry.toLowerCase();
           if (lowerEntry.includes(keyword)) {
             results.push(full_path);

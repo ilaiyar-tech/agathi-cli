@@ -1,4 +1,6 @@
 import { WidgetRegistry, WorkspaceWidget } from "./widget_registry.js";
+import { LayoutEngine } from "./layout_engine.js";
+import { TerminalRenderer } from "./terminal_renderer.js";
 import { get_active_model, model_usage } from "../model_manager/index.js";
 import { whatsapp } from "../whatsapp_manager/index.js";
 import { scheduler } from "../task_scheduler/index.js";
@@ -6,25 +8,20 @@ import { sessions } from "../session_manager/index.js";
 import { eventBus } from "../core/event_bus.js";
 import { memory } from "../memory/memory_engine.js";
 import { accuracyEngine } from "../accuracy_engine/index.js";
-import { RenderManager } from "./render_manager.js";
-import { PROMPT_PREFIX } from "../core/index.js";
 import chalk from "chalk";
 
 export class TuiConsoleManager {
+  private static scrollback: string[] = [];
   private static activeWorkspace: string = "default";
   private static activeAgentNode: string = "User";
-  private static isEventBusSubscribed = false;
 
   static addLog(msg: string) {
-    RenderManager.addLog(msg);
+    this.scrollback.push(msg);
+    this.draw();
   }
 
   static getScrollback(): string[] {
-    return RenderManager.getScrollback();
-  }
-
-  static draw() {
-    RenderManager.queueDraw();
+    return this.scrollback;
   }
 
   private static initDatabase() {
@@ -39,9 +36,7 @@ export class TuiConsoleManager {
         );
       `);
     } catch (e) {
-      // Direct console output during active interactive TUI is prohibited.
-      // We log to RenderManager instead to keep stdout clean.
-      RenderManager.addLog(`[TUI DB Error] Failed to initialize tui_workspaces table: ${e}`);
+      console.error("Failed to initialize tui_workspaces table:", e);
     }
   }
 
@@ -55,7 +50,7 @@ export class TuiConsoleManager {
         `).run(workspaceId, w.id, w.visible ? 1 : 0, w.dock);
       }
     } catch (e) {
-      RenderManager.addLog(`[TUI Error] Failed to save layout: ${e}`);
+      console.error("Failed to save layout:", e);
     }
   }
 
@@ -214,10 +209,26 @@ export class TuiConsoleManager {
     });
   }
 
-  static setupEventBusSubscriptions() {
-    if (this.isEventBusSubscribed) return;
-    this.isEventBusSubscribed = true;
+  static draw() {
+    const width = process.stdout.columns || 80;
+    const height = process.stdout.rows || 24;
 
+    const cells = LayoutEngine.computeLayout(width, height);
+    const output = TerminalRenderer.drawBuffer(cells, width, height, this.scrollback);
+
+    process.stdout.write("\x1b[H\x1b[2J");
+    process.stdout.write(output);
+
+    const termCell = cells.find(c => c.id === "terminal");
+    if (termCell) {
+      const promptY = termCell.y + termCell.height - 2;
+      const promptX = termCell.x + 4;
+      process.stdout.write(`\x1b[${promptY + 1};${promptX + 1}H`);
+    }
+  }
+
+  static setupEventBusSubscriptions() {
+    // Event-driven reactive UI updates
     eventBus.on("*", (event) => {
       const type = event.type;
       
@@ -237,8 +248,9 @@ export class TuiConsoleManager {
         this.addLog(`[TUI Event] Task completed: ${event.payload.taskId}`);
       } else if (type === "FILE_WRITTEN") {
         this.activeAgentNode = "Memory";
-        RenderManager.forceRedraw();
       }
+
+      this.draw();
     });
   }
 
@@ -251,31 +263,25 @@ export class TuiConsoleManager {
     this.addLog(` ${chalk.bold.magenta("tu2pu")} Workspace Console launched [Workspace: ${workspaceId}]`);
     this.addLog(` Type your prompt below. Try 'doctor', 'models', or chat directly.`);
 
-    RenderManager.forceRedraw();
-
     process.stdout.on("resize", () => {
-      RenderManager.handleResize();
+      this.draw();
     });
 
+    
     const readline = await import("node:readline/promises");
     const rl = readline.createInterface({
       input: process.stdin,
       output: process.stdout
     });
-    
-    RenderManager.setActiveRl(rl);
 
     const { agent_runtime } = await import("../agent_runtime/agent_runtime.js");
     const runtime = new agent_runtime();
 
     while (true) {
-      const input = await rl.question(chalk.magenta(PROMPT_PREFIX + " "));
-      
-      // Immediately force a redraw to wipe out the newline/input written by readline to stdout,
-      // avoiding layout shift and jumping messages.
-      RenderManager.forceRedraw();
-
+    
+      const input = await rl.question(chalk.magenta("த › "));
       const trimmed = input.trim();
+
       if (!trimmed) continue;
 
       if (trimmed === "exit" || trimmed === "quit" || trimmed === "/exit" || trimmed === "/quit") {
@@ -284,15 +290,17 @@ export class TuiConsoleManager {
       }
 
       if (trimmed === "clear" || trimmed === "/clear") {
-        RenderManager.clearScrollback();
+        this.scrollback = [];
+        this.addLog(" Console logs cleared.");
         continue;
       }
 
       this.addLog(`${chalk.magenta("you ›")} ${trimmed}`);
+     
 
       try {
         const response = await runtime.chat(trimmed, workspaceId);
-        this.addLog(`${chalk.cyan(PROMPT_PREFIX)} ${response.content}`);
+        this.addLog(`${chalk.cyan("த ›")} ${response.content}`);
       } catch (e: any) {
         this.addLog(`${chalk.red("Error ›")} ${e.message}`);
       }

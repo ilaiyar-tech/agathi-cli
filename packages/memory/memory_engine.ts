@@ -9,6 +9,9 @@ export class memory_engine {
             fs.ensureDirSync("storage");
         }
         this.database = new Database(dbPath);
+        this.database.pragma("journal_mode = WAL");
+        this.database.pragma("synchronous = NORMAL");
+        this.database.pragma("foreign_keys = ON");
         
         // Setup initial schemas
         this.database.exec(`
