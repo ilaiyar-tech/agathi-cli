@@ -73,12 +73,12 @@ async function save_history(lines: string[]): Promise<void> {
 }
 
 function banner() {
-  console.log(chalk.bold.magenta("  █████╗  ██████╗  █████╗ ████████╗██╗  ██╗██╗"));
-  console.log(chalk.bold.magenta("  ██╔══██╗██╔════╝ ██╔══██╗╚══██╔══╝██║  ██║██║"));
-  console.log(chalk.bold.cyan("  ███████║██║  ███╗███████║   ██║   ███████║██║"));
-  console.log(chalk.bold.cyan("  ██╔══██║██║   ██║██╔══██║   ██║   ██╔══██║██║"));
-  console.log(chalk.bold.cyan("  ██║  ██║╚██████╔╝██║  ██║   ██║   ██║  ██║██║"));
-  console.log(chalk.bold.cyan("  ╚═╝  ╚═╝ ╚═════╝ ╚═╝  ╚═╝   ╚═╝   ╚═╝  ╚═╝╚═╝"));
+  console.log(chalk.bold.magenta("  ████████╗██╗   ██╗██████╗ ██████╗ ██╗   ██╗"));
+  console.log(chalk.bold.magenta("  ╚══██╔══╝██║   ██║╚════██╗██╔══██╗██║   ██║"));
+  console.log(chalk.bold.cyan("     ██║   ██║   ██║ █████╔╝██████╔╝██║   ██║"));
+  console.log(chalk.bold.cyan("     ██║   ██║   ██║██╔═══╝ ██╔═══╝ ██║   ██║"));
+  console.log(chalk.bold.cyan("     ██║   ╚██████╔╝███████╗██║     ╚██████╔╝"));
+  console.log(chalk.bold.cyan("     ╚═╝    ╚═════╝ ╚══════╝╚═╝      ╚═════╝ "));
   console.log();
   console.log(chalk.gray("  Interactive Mode — type /help for commands, /exit to quit"));
   console.log();
@@ -213,7 +213,7 @@ export async function launch_interactive(opts: {
     rl.prompt();
   });
 
-  const prompt_label = () => chalk.magenta("அ › ");
+  const prompt_label = () => chalk.magenta("த › ");
   rl.setPrompt(prompt_label());
   rl.prompt();
 
@@ -298,7 +298,7 @@ export async function launch_interactive(opts: {
       const isOnline = await isServerOnline();
       if (!isOnline) {
         if (state.streaming) {
-          process.stdout.write(chalk.cyan("\nஅ (Local) › "));
+          process.stdout.write(chalk.cyan("\nத (Local) › "));
           let assistantContent = "";
           const localRuntime = new agent_runtime();
           await localRuntime.chat_stream(trimmed, state.sessionId, (token: string) => {
@@ -313,7 +313,7 @@ export async function launch_interactive(opts: {
           const res = await localRuntime.chat(trimmed, state.sessionId);
           localSpinner.stop();
           console.log();
-          console.log(chalk.cyan("அ (Local) ›"));
+          console.log(chalk.cyan("த (Local) ›"));
           printMarkdown(res.content);
           console.log();
           chatHistory.push({ role: "assistant", content: res.content });
@@ -331,11 +331,11 @@ export async function launch_interactive(opts: {
 
         const updateLoader = () => {
           if (loaderTimer) {
-             process.stdout.write("\r\x1b[K" + chalk.cyan("அ › ") + chalk.gray(loaderFrames[frameIdx] + " " + currentLoaderText));
+              process.stdout.write("\r\x1b[K" + chalk.cyan("த › ") + chalk.gray(loaderFrames[frameIdx] + " " + currentLoaderText));
           }
         };
  
-        process.stdout.write("\n" + chalk.cyan("அ › ") + chalk.gray(loaderFrames[frameIdx] + " " + currentLoaderText));
+        process.stdout.write("\n" + chalk.cyan("த › ") + chalk.gray(loaderFrames[frameIdx] + " " + currentLoaderText));
         loaderTimer = setInterval(() => {
           frameIdx = (frameIdx + 1) % loaderFrames.length;
           updateLoader();
@@ -345,7 +345,7 @@ export async function launch_interactive(opts: {
           if (loaderTimer) {
             clearInterval(loaderTimer);
             loaderTimer = null;
-            process.stdout.write("\r\x1b[K" + chalk.cyan("அ › "));
+             process.stdout.write("\r\x1b[K" + chalk.cyan("த › "));
           }
         };
 
@@ -465,7 +465,7 @@ export async function launch_interactive(opts: {
         
         spinner?.stop();
         console.log();
-        console.log(chalk.cyan("அ ›"));
+        console.log(chalk.cyan("த ›"));
         printMarkdown(replyContent);
         console.log();
       }

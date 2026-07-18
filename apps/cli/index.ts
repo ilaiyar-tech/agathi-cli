@@ -287,7 +287,7 @@ program
       const spinner = opts.stream ? null : ora({ text: "Thinking...", color: "cyan" }).start();
       try {
         if (opts.stream) {
-          process.stdout.write(chalk.cyan("\nஅ › "));
+          process.stdout.write(chalk.cyan("\nத › "));
           await stream_chat_api(trimmed, opts.session, (token: string) => {
             process.stdout.write(token);
           });
@@ -296,7 +296,7 @@ program
           const result = await block_chat_api(trimmed, opts.session);
           spinner?.stop();
           console.log();
-          process.stdout.write(chalk.cyan("அ › "));
+          process.stdout.write(chalk.cyan("த › "));
           console.log();
           printMarkdown(result.content);
           console.log();
@@ -803,6 +803,18 @@ Context OS     Deep Rethinker     Evidence Engine
 register_project_commands(program);
 register_builder_commands(program);
 register_deploy_commands(program);
+
+program
+  .command("dashboard")
+  .alias("console")
+  .description("Launch the tu2pu web dashboard console in your browser")
+  .action(async () => {
+    console.log(chalk.bold.cyan("Opening tu2pu web dashboard at http://localhost:8100 ..."));
+    const { exec } = await import("child_process");
+    const url = "http://localhost:8100";
+    const startCmd = process.platform === "darwin" ? "open" : process.platform === "win32" ? "start" : "xdg-open";
+    exec(`${startCmd} ${url}`);
+  });
 
 // tu2pu help override
 program
