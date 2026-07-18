@@ -2,6 +2,8 @@ import Fastify from "fastify";
 import cors from "@fastify/cors";
 import axios from "axios";
 import fs from "node:fs";
+import path from "node:path";
+
 
 import { router } from "../../../packages/router/index.js";
 import { runtime } from "../../../packages/agent_runtime/index.js";
@@ -29,6 +31,7 @@ import { generator_routes } from "./routes/generator.js";
 import { preview_routes } from "./routes/preview.js";
 import { deploy_routes } from "./routes/deploy.js";
 import { whatsapp_routes } from "./routes/whatsapp.js";
+import { auth_routes } from "./routes/auth.js";
 
 const app = Fastify({
   requestTimeout: 0,
@@ -58,6 +61,8 @@ await tools_routes(app);
 await generator_routes(app);
 await preview_routes(app);
 await deploy_routes(app);
+await auth_routes(app);
+
 
 // --- OPENAI COMPATIBILITY ROUTING LAYER (STAGE 5 CRITICAL ACTION ITEM) ---
 
@@ -245,10 +250,64 @@ app.post(
   }
 );
 
+function getMimeType(filePath: string): string {
+  const ext = path.extname(filePath).toLowerCase();
+  if (ext === ".html") return "text/html; charset=utf-8";
+  if (ext === ".css") return "text/css; charset=utf-8";
+  if (ext === ".js" || ext === ".mjs") return "application/javascript; charset=utf-8";
+  if (ext === ".json") return "application/json; charset=utf-8";
+  if (ext === ".png") return "image/png";
+  if (ext === ".jpg" || ext === ".jpeg") return "image/jpeg";
+  if (ext === ".gif") return "image/gif";
+  if (ext === ".svg") return "image/svg+xml";
+  if (ext === ".ico") return "image/x-icon";
+  return "application/octet-stream";
+}
+
+app.get("/*", async (request, reply) => {
+  const url = request.url.split("?")[0];
+  if (
+    url.startsWith("/v1") ||
+    url.startsWith("/auth") ||
+    url.startsWith("/models") ||
+    url.startsWith("/providers") ||
+    url.startsWith("/system") ||
+    url.startsWith("/chats") ||
+    url.startsWith("/settings") ||
+    url.startsWith("/downloads") ||
+    url.startsWith("/rag") ||
+    url.startsWith("/whatsapp") ||
+    url.startsWith("/plugins") ||
+    url.startsWith("/users") ||
+    url.startsWith("/audit") ||
+    url.startsWith("/report") ||
+    url.startsWith("/status") ||
+    url.startsWith("/releases")
+  ) {
+    return reply.status(404).send({ error: "not_found" });
+  }
+
+  const distDir = "/home/agathi/ilaiyar-tech/thudupu-ai/apps/dashboard/dist";
+  let targetFile = path.join(distDir, url === "/" ? "index.html" : url);
+
+  if (!fs.existsSync(targetFile) || fs.statSync(targetFile).isDirectory()) {
+    targetFile = path.join(distDir, "index.html");
+  }
+
+  if (!fs.existsSync(targetFile)) {
+    return reply.status(404).send("Not Found");
+  }
+
+  const contentType = getMimeType(targetFile);
+  const fileStream = fs.createReadStream(targetFile);
+  return reply.type(contentType).send(fileStream);
+});
+
 await app.listen({
   host: "0.0.0.0",
   port: 8100
 });
+
 
 attach_websockets(app.server);
 
