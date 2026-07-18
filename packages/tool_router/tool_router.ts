@@ -25,6 +25,7 @@ export class tool_router {
       workflow.transition("Task");
     }
     let no_tool_retry_count = 0;
+    let toolsExecutedCount = 0;
     const messages = [...options.messages];
     const tools = registry.getDefinitions();
     const executedTools = new Set<string>();
@@ -121,6 +122,9 @@ export class tool_router {
             tool: function_name,
             args: function_args
           });
+          if (result && result.success) {
+            toolsExecutedCount++;
+          }
           const durationMs = Date.now() - startTime;
 
           // Record execution in ContextOS database
@@ -169,7 +173,8 @@ export class tool_router {
         workflow.transition("Summary");
         return {
           content: message.content,
-          messages
+          messages,
+          toolsExecutedCount
         };
       }
     }
@@ -192,6 +197,7 @@ export class tool_router {
       workflow.transition("Task");
     }
     let no_tool_retry_count = 0;
+    let toolsExecutedCount = 0;
     const messages = [...options.messages];
     const tools = registry.getDefinitions();
     const executedTools = new Set<string>();
@@ -435,6 +441,9 @@ export class tool_router {
               tool: name,
               args
             });
+            if (result && result.success) {
+              toolsExecutedCount++;
+            }
           } finally {
             eventBus.off("TOOL_PROGRESS", progressListener);
           }
@@ -501,7 +510,8 @@ export class tool_router {
         messages.push(assistant_message);
         return {
           content,
-          messages
+          messages,
+          toolsExecutedCount
         };
       }
     }
@@ -514,10 +524,12 @@ export const tools_router = new tool_router();
 function filterStreamLine(text: string): string | null {
   const lower = text.toLowerCase();
   if (lower.includes("[tool call]")) return null;
+  if (lower.includes("tool call")) return null;
   if (lower.includes("<function-call>")) return null;
   if (lower.includes("</function-call>")) return null;
   if (lower.includes("<tool_") || lower.includes("</tool_")) return null;
   if (lower.includes("tool_call") || lower.includes("function_call")) return null;
+  if (lower.includes("finish(") || lower.includes("finish{")) return null;
   if (text.trim().startsWith('{"name"') || text.trim().startsWith('{"command"')) return null;
   return text;
 }

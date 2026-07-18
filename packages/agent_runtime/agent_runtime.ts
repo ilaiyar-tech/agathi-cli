@@ -1,4 +1,5 @@
 import crypto from "node:crypto";
+import { execSync } from "node:child_process";
 import { router } from "../router/index.js";
 import { tools_router } from "../tool_router/index.js";
 import { planner, Message } from "../prompt_planner/index.js";
@@ -84,13 +85,67 @@ function detectProfile(prompt: string): ExecutionProfile {
   return EXECUTION_PROFILES.chat;
 }
 
-function isConversational(prompt: string): boolean {
+export function classifyIntent(prompt: string): string {
+  const p = prompt.toLowerCase().trim();
+  
+  const greetings = [
+    "hi", "hello", "hey", "hola", "yo", "sup", "what's up",
+    "machan", "da", "bro", "enna da", "enna pandra", "nallarukan", "nalla iruken", "eppadi irukenga", "vanakkam"
+  ];
+  
+  if (greetings.some(g => p === g || p.startsWith(g + " ") || p.endsWith(" " + g))) {
+    return "Conversation";
+  }
+  
+  if (p.length < 10 && !p.includes("run") && !p.includes("git") && !p.includes("code")) {
+    return "Conversation";
+  }
+
+  if (p.includes("image") || p.includes("draw") || p.includes("picture") || p.includes("photo") || p.includes("illustration")) {
+    return "Image Generation";
+  }
+
+  if (p.includes("browse") || p.includes("google") || p.includes("website text") || p.includes("page screenshot") || p.includes("url") || p.includes("open website")) {
+    return "Browser";
+  }
+
+  if (p.includes("research") || p.includes("documentation") || p.includes("docs") || p.includes("search documentation")) {
+    return "Research";
+  }
+
+  if (p.includes("python") || p.includes(".py") || p.includes("run script")) {
+    return "Python";
+  }
+
+  if (p.includes("bash") || p.includes("run command") || p.includes("terminal") || p.includes("execute command")) {
+    return "Bash";
+  }
+
+  const actionVerbs = ["create", "build", "generate", "write", "make", "setup", "initialize", "new file", "new website", "project"];
+  if (actionVerbs.some(verb => p.includes(verb))) {
+    return "Workspace Generation";
+  }
+
+  const codingKeywords = ["code", "function", "class", "refactor", "bug", "fix", "implementation", "compile", "lint", "syntax"];
+  if (codingKeywords.some(kw => p.includes(kw))) {
+    return "Coding";
+  }
+
   const analyzer = new IntentAnalyzer();
   const classification = analyzer.classify(prompt);
-  if (classification.category === "conversation" && classification.confidence >= 0.7) {
-    return true;
+  if (classification.category === "conversation") {
+    return "Conversation";
   }
-  return false;
+
+  return "Workspace Generation";
+}
+
+function getWorkspaceGitStatus(): string {
+  try {
+    return execSync("git status --porcelain", { encoding: "utf8", timeout: 2000 }).trim();
+  } catch (e) {
+    return "";
+  }
 }
 
 function cleanKeyword(raw: string): string {
@@ -122,7 +177,6 @@ async function runFileAnalysisPipeline(prompt: string, contextId: string): Promi
       for (const filePath of limitPaths) {
         try {
           const content = await readHandler({ path: filePath });
-          // Index file in Context OS Workspace Memory
           ContextOS.workspace.indexFile(contextId, {
             path: filePath,
             content,
@@ -159,13 +213,12 @@ export class agent_runtime {
       prompt
     }, `Starting execution ${executionId} for session ${session_id}`);
 
-    // Initialize state machine
     ContextOS.state.startExecution(contextId, session_id, executionId);
-
-    // Save legacy message to avoid breaking tests relying on memory engine legacy queries
     (ContextOS.sessions as any).createSession(session_id, contextId);
-    
-    if (isConversational(prompt)) {
+
+    const intent = classifyIntent(prompt);
+
+    if (intent === "Conversation") {
       const model = router.detect_model(prompt);
       await router.ensure(model);
 
@@ -197,14 +250,9 @@ export class agent_runtime {
       ContextOS.state.complete();
       return { id: executionId, session_id, content: response.content };
     }
-    
-    // Add context to db
-    const legacyMemory = (ContextOS as any).sessions; // backward compat db mapping
-    const rawMemory = (legacyMemory as any).memory || (ContextOS as any).tools; // fallback helper
-    
-    // Log prompt in legacy database
-    ContextOS.state.transition("Investigation", "Evaluating input intent");
-    
+
+    const initialGitStatus = getWorkspaceGitStatus();
+
     // Construct PromptContext using Builder
     const promptCtx = await ContextOS.prompts.build({
       contextId,
@@ -252,35 +300,58 @@ export class agent_runtime {
 
     const session_context_str = session_context.workspace.map((w: WorkspaceChunk) => `File: ${w.path}\n${w.content}`).join("\n");
 
-    const messages = planner.plan({
-      system_prompt,
-      history: historical_messages,
-      context: [session_context_str],
-      user_prompt: prompt
-    });
+    let validator_retries = 0;
+    let extraSystemInstruction = "";
 
-    const model = router.detect_model(prompt);
-    await router.ensure(model);
+    while (validator_retries < 3) {
+      const messages = planner.plan({
+        system_prompt: system_prompt + (extraSystemInstruction ? "\n\n" + extraSystemInstruction : ""),
+        history: historical_messages,
+        context: [session_context_str],
+        user_prompt: prompt
+      });
 
-    ContextOS.state.transition("ToolExecution", "Running interactive tool selection loop");
-    const response = await tools_router.chat({ 
-      messages, 
-      model,
-      contextId,
-      sessionId: session_id,
-      executionId
-    });
+      const model = router.detect_model(prompt);
+      await router.ensure(model);
+
+      ContextOS.state.transition("ToolExecution", `Running interactive tool selection loop (attempt ${validator_retries + 1})`);
+      const response = await tools_router.chat({ 
+        messages, 
+        model,
+        contextId,
+        sessionId: session_id,
+        executionId
+      });
+
+      const toolsExecutedCount = (response as any).toolsExecutedCount || 0;
+      const isCreateOrGenerate = ["create", "build", "generate", "write", "make"].some(verb => prompt.toLowerCase().includes(verb));
+      const finalGitStatus = getWorkspaceGitStatus();
+      const filesModified = finalGitStatus !== initialGitStatus;
+
+      if (isCreateOrGenerate && (toolsExecutedCount === 0 || (!filesModified && toolsExecutedCount <= 1))) {
+        validator_retries++;
+        extraSystemInstruction = `CRITICAL VALIDATION FAILURE: You attempted to answer without producing any file artifacts or modifications in the workspace. The user explicitly requested to '${intent}'. You MUST use specific tools (such as write_file or replace_file_content) to write the files or execute commands. Text-only explanations are rejected. You cannot complete the task without creating/modifying files.`;
+        continue;
+      }
+
+      ContextOS.state.complete();
+      logger.info({
+        event: "execution_complete",
+        sessionId: session_id,
+        executionId
+      }, `Completed execution ${executionId} for session ${session_id}`);
+      return {
+        id: executionId,
+        session_id,
+        content: response?.content || ""
+      };
+    }
 
     ContextOS.state.complete();
-    logger.info({
-      event: "execution_complete",
-      sessionId: session_id,
-      executionId
-    }, `Completed execution ${executionId} for session ${session_id}`);
     return {
       id: executionId,
       session_id,
-      content: response?.content || ""
+      content: "Failed to verify workspace action execution. Please try again with a more specific prompt."
     };
   }
 
@@ -301,7 +372,9 @@ export class agent_runtime {
 
     ContextOS.state.startExecution(contextId, session_id, executionId);
 
-    if (isConversational(prompt)) {
+    const intent = classifyIntent(prompt);
+
+    if (intent === "Conversation") {
       const model = router.detect_model(prompt);
       await router.ensure(model);
 
@@ -337,6 +410,8 @@ export class agent_runtime {
       ContextOS.state.complete();
       return { id: executionId, session_id, content };
     }
+
+    const initialGitStatus = getWorkspaceGitStatus();
 
     const promptCtx = await ContextOS.prompts.build({
       contextId,
@@ -385,32 +460,56 @@ export class agent_runtime {
 
     const session_context_str = session_context.workspace.map((w: WorkspaceChunk) => `File: ${w.path}\n${w.content}`).join("\n");
 
-    const messages = planner.plan({
-      system_prompt,
-      history: historical_messages,
-      context: [session_context_str],
-      user_prompt: prompt
-    });
+    let validator_retries = 0;
+    let extraSystemInstruction = "";
 
-    const model = router.detect_model(prompt);
-    await router.ensure(model);
+    while (validator_retries < 3) {
+      const messages = planner.plan({
+        system_prompt: system_prompt + (extraSystemInstruction ? "\n\n" + extraSystemInstruction : ""),
+        history: historical_messages,
+        context: [session_context_str],
+        user_prompt: prompt
+      });
 
-    ContextOS.state.transition("ToolExecution", "Running interactive tool selection stream");
-    const result = await tools_router.chat_stream({ 
-      messages, 
-      model,
-      contextId,
-      sessionId: session_id,
-      executionId
-    }, onToken);
+      const model = router.detect_model(prompt);
+      await router.ensure(model);
+
+      ContextOS.state.transition("ToolExecution", `Running interactive tool selection stream (attempt ${validator_retries + 1})`);
+      const result = await tools_router.chat_stream({ 
+        messages, 
+        model,
+        contextId,
+        sessionId: session_id,
+        executionId
+      }, onToken);
+
+      const toolsExecutedCount = (result as any).toolsExecutedCount || 0;
+      const isCreateOrGenerate = ["create", "build", "generate", "write", "make"].some(verb => prompt.toLowerCase().includes(verb));
+      const finalGitStatus = getWorkspaceGitStatus();
+      const filesModified = finalGitStatus !== initialGitStatus;
+
+      if (isCreateOrGenerate && (toolsExecutedCount === 0 || (!filesModified && toolsExecutedCount <= 1))) {
+        validator_retries++;
+        extraSystemInstruction = `CRITICAL VALIDATION FAILURE: You attempted to answer without producing any file artifacts or modifications in the workspace. The user explicitly requested to '${intent}'. You MUST use specific tools (such as write_file or replace_file_content) to write the files or execute commands. Text-only explanations are rejected. You cannot complete the task without creating/modifying files.`;
+        onToken(`\n\x1b[33m⚠ Action validation failed: no files written. Retrying action execution...\x1b[0m\n`);
+        continue;
+      }
+
+      ContextOS.state.complete();
+      logger.info({
+        event: "execution_stream_complete",
+        sessionId: session_id,
+        executionId
+      }, `Completed streaming execution ${executionId} for session ${session_id}`);
+      return { id: executionId, session_id, content: result?.content || "" };
+    }
 
     ContextOS.state.complete();
-    logger.info({
-      event: "execution_stream_complete",
-      sessionId: session_id,
-      executionId
-    }, `Completed streaming execution ${executionId} for session ${session_id}`);
-    return { id: executionId, session_id, content: result?.content || "" };
+    return {
+      id: executionId,
+      session_id,
+      content: "Failed to verify workspace action execution. Please try again with a more specific prompt."
+    };
   }
 
 }
