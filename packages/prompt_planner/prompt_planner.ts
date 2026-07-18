@@ -8,6 +8,12 @@ export interface PromptPlanOptions {
   history?: Message[];
   context?: string[];
   user_prompt: string;
+  intentInfo?: {
+    intent: string;
+    confidence: number;
+    requiredCapabilities: string[];
+    requiredTools: string[];
+  };
 }
 
 export class prompt_planner {
@@ -19,6 +25,17 @@ export class prompt_planner {
       messages.push({
         role: "system",
         content: options.system_prompt
+      });
+    }
+
+    if (options.intentInfo) {
+      messages.push({
+        role: "system",
+        content: `[Intent Classification Engine]
+Primary Intent: ${options.intentInfo.intent}
+Confidence: ${options.intentInfo.confidence}
+Required Capabilities: ${options.intentInfo.requiredCapabilities.join(", ") || "none"}
+Required Tools: ${options.intentInfo.requiredTools.join(", ") || "none"}`
       });
     }
 

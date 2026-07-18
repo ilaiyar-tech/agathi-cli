@@ -5,3 +5,4 @@ export * from "./connector_framework.js";
 export * from "./execution_sandbox.js";
 export * from "./negotiator.js";
 export * from "./uel_pipeline.js";
+export * from "./execution_manager.js";

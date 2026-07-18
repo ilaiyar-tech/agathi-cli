@@ -7,7 +7,9 @@ import { system_prompt } from "../prompts/system_prompt.js";
 import { registry } from "../tools/index.js";
 import { ContextOS } from "../context_engine/index.js";
 import { WorkspaceChunk } from "../context/context_interfaces.js";
-import { IntentAnalyzer } from "../prompt_intelligence/prompt_intelligence.js";
+import { IntentAnalyzer, intentEngine } from "../prompt_intelligence/index.js";
+import { executionManager } from "../execution_layer/index.js";
+import { RuntimeTelemetry } from "./runtime_telemetry.js";
 import { logger } from "../logger/index.js";
 
 export interface ExecutionProfile {
@@ -85,67 +87,48 @@ function detectProfile(prompt: string): ExecutionProfile {
   return EXECUTION_PROFILES.chat;
 }
 
-export function classifyIntent(prompt: string): string {
-  const p = prompt.toLowerCase().trim();
-  
-  const greetings = [
-    "hi", "hello", "hey", "hola", "yo", "sup", "what's up",
-    "machan", "da", "bro", "enna da", "enna pandra", "nallarukan", "nalla iruken", "eppadi irukenga", "vanakkam"
-  ];
-  
-  if (greetings.some(g => p === g || p.startsWith(g + " ") || p.endsWith(" " + g))) {
-    return "Conversation";
-  }
-  
-  if (p.length < 10 && !p.includes("run") && !p.includes("git") && !p.includes("code")) {
-    return "Conversation";
-  }
-
-  if (p.includes("image") || p.includes("draw") || p.includes("picture") || p.includes("photo") || p.includes("illustration")) {
-    return "Image Generation";
-  }
-
-  if (p.includes("browse") || p.includes("google") || p.includes("website text") || p.includes("page screenshot") || p.includes("url") || p.includes("open website")) {
-    return "Browser";
-  }
-
-  if (p.includes("research") || p.includes("documentation") || p.includes("docs") || p.includes("search documentation")) {
-    return "Research";
-  }
-
-  if (p.includes("python") || p.includes(".py") || p.includes("run script")) {
-    return "Python";
-  }
-
-  if (p.includes("bash") || p.includes("run command") || p.includes("terminal") || p.includes("execute command")) {
-    return "Bash";
-  }
-
-  const actionVerbs = ["create", "build", "generate", "write", "make", "setup", "initialize", "new file", "new website", "project"];
-  if (actionVerbs.some(verb => p.includes(verb))) {
-    return "Workspace Generation";
-  }
-
-  const codingKeywords = ["code", "function", "class", "refactor", "bug", "fix", "implementation", "compile", "lint", "syntax"];
-  if (codingKeywords.some(kw => p.includes(kw))) {
-    return "Coding";
-  }
-
-  const analyzer = new IntentAnalyzer();
-  const classification = analyzer.classify(prompt);
-  if (classification.category === "conversation") {
-    return "Conversation";
-  }
-
-  return "Workspace Generation";
-}
-
 function getWorkspaceGitStatus(): string {
   try {
     return execSync("git status --porcelain", { encoding: "utf8", timeout: 2000 }).trim();
   } catch (e) {
     return "";
   }
+}
+
+function getExecutionGraphForIntent(intent: string): string {
+  switch (intent) {
+    case "Website Generation":
+      return "Create Workspace ➔ Generate Files ➔ Verify Files ➔ Completed";
+    case "File Generation":
+      return "Plan File Layout ➔ Write File ➔ Lint Check ➔ Completed";
+    case "Coding":
+      return "Analyze Requirements ➔ Implement Changes ➔ Run Tests ➔ Completed";
+    case "Python":
+    case "Bash":
+      return "Formulate Shell Command ➔ Execute Process ➔ Verify Exit Code ➔ Completed";
+    case "Image Generation":
+      return "Construct Image Prompt ➔ Call Image Tool ➔ Verify Output ➔ Completed";
+    case "Browser":
+    case "Search":
+      return "Initialize Browser Session ➔ Query Web Page ➔ Extract Text ➔ Completed";
+    default:
+      return "Plan Steps ➔ Run Tools ➔ Confirm Changes ➔ Completed";
+  }
+}
+
+function verifyExecutionSuccess(intent: string, toolsCount: number, filesModified: boolean): boolean {
+  if (["Website Generation", "File Generation", "Workspace Generation"].includes(intent)) {
+    return filesModified && toolsCount > 0;
+  }
+  return toolsCount > 0;
+}
+
+function sanitizeContent(content: string): string {
+  let clean = content;
+  clean = clean.replace(/\[TOOL CALL\]:?\s*\w+\([\s\S]*?\)/gi, "");
+  clean = clean.replace(/finish\(\{\}\)/gi, "");
+  clean = clean.replace(/Summary\s*$/i, "");
+  return clean.trim();
 }
 
 function cleanKeyword(raw: string): string {
@@ -205,6 +188,18 @@ export class agent_runtime {
   ) {
     const contextId = `ctx-${session_id}`;
     const executionId = `exec-${crypto.randomUUID()}`;
+    const session = executionManager.startSession(executionId);
+
+    const startTime = Date.now();
+    let plannerStartTime = 0;
+    let plannerEndTime = 0;
+    let toolStartTime = 0;
+    let toolEndTime = 0;
+    let verifyStartTime = 0;
+    let verifyEndTime = 0;
+    let failures = 0;
+    let retries = 0;
+    let timeouts = 0;
 
     logger.info({
       event: "execution_start",
@@ -213,12 +208,23 @@ export class agent_runtime {
       prompt
     }, `Starting execution ${executionId} for session ${session_id}`);
 
-    ContextOS.state.startExecution(contextId, session_id, executionId);
     (ContextOS.sessions as any).createSession(session_id, contextId);
 
-    const intent = classifyIntent(prompt);
+    const intentResult = intentEngine.classify(prompt);
+    const requiresExecution = [
+      "Workspace Generation",
+      "File Generation",
+      "Coding",
+      "Website Generation",
+      "Image Generation",
+      "Python",
+      "Bash",
+      "Tool Execution",
+      "Git"
+    ].includes(intentResult.intent);
 
-    if (intent === "Conversation") {
+    if (!requiresExecution) {
+      executionManager.transition(executionId, "Planning");
       const model = router.detect_model(prompt);
       await router.ensure(model);
 
@@ -241,13 +247,28 @@ export class agent_runtime {
       }
 
       const messages = [
-        { role: "system", content: "You are tu2pu, a helpful and premium AI coding and development collaborator. You are bilingual and fluent in English, Tamil, and Tanglish (Tamil written in English script). If the user chats in casual Tanglish (e.g., 'enna pandra', 'eppadi irukeenga', 'machan'), respond naturally, warm, and concisely in matching friendly Tanglish (e.g., 'naan nalla iruken machan, neenga eppadi irukeenga?'). Never treat Tamil/Tanglish words as spelling errors or typos (never reply with 'Did you mean Pandora?'). Respond naturally and concisely without calling tools or generating plans." },
+        { role: "system", content: "You are tu2pu, a helpful and premium AI coding and development collaborator. You are bilingual and fluent in English, Tamil, and Tanglish (Tamil written in English script). If the user chats in casual Tanglish (e.g., 'enna da', 'enna pandra', 'eppadi irukeenga', 'machan', 'nallarukan', 'saptiya'), respond naturally, warm, and concisely in matching friendly Tanglish (e.g., 'naan nalla iruken machan, neenga eppadi irukeenga?'). Never treat Tamil/Tanglish words as spelling errors or typos. Respond naturally and concisely without calling tools or generating plans." },
         ...historical_messages,
         { role: "user", content: prompt }
       ];
 
       const response = await router.chat_model(model, messages);
-      ContextOS.state.complete();
+      executionManager.transition(executionId, "Completed");
+      
+      RuntimeTelemetry.record({
+        sessionId: session_id,
+        intent: intentResult.intent,
+        executionDurationMs: Date.now() - startTime,
+        plannerDurationMs: 0,
+        toolDurationMs: 0,
+        verificationDurationMs: 0,
+        failures: 0,
+        retries: 0,
+        cancellations: 0,
+        timeouts: 0,
+        success: true
+      });
+
       return { id: executionId, session_id, content: response.content };
     }
 
@@ -273,7 +294,8 @@ export class agent_runtime {
     }
 
     const profile = detectProfile(prompt);
-    ContextOS.state.transition("Execution", "Triggering intent flow");
+    executionManager.transition(executionId, "Planning");
+    plannerStartTime = Date.now();
 
     if (profile.intent === "file_analysis") {
       const contextData = await runFileAnalysisPipeline(prompt, contextId);
@@ -286,7 +308,7 @@ export class agent_runtime {
         await router.ensure(profile.llm);
         const response = await router.coder(messages);
         
-        ContextOS.state.complete();
+        executionManager.transition(executionId, "Completed");
         return { id: executionId, session_id, content: response.content };
       }
     }
@@ -299,22 +321,31 @@ export class agent_runtime {
     });
 
     const session_context_str = session_context.workspace.map((w: WorkspaceChunk) => `File: ${w.path}\n${w.content}`).join("\n");
+    plannerEndTime = Date.now();
 
     let validator_retries = 0;
     let extraSystemInstruction = "";
 
     while (validator_retries < 3) {
+      executionManager.transition(executionId, "Planning");
       const messages = planner.plan({
         system_prompt: system_prompt + (extraSystemInstruction ? "\n\n" + extraSystemInstruction : ""),
         history: historical_messages,
         context: [session_context_str],
-        user_prompt: prompt
+        user_prompt: prompt,
+        intentInfo: {
+          intent: intentResult.intent,
+          confidence: intentResult.confidence,
+          requiredCapabilities: intentResult.requiredCapabilities,
+          requiredTools: intentResult.requiredTools
+        }
       });
 
       const model = router.detect_model(prompt);
       await router.ensure(model);
 
-      ContextOS.state.transition("ToolExecution", `Running interactive tool selection loop (attempt ${validator_retries + 1})`);
+      executionManager.transition(executionId, "Executing");
+      toolStartTime = Date.now();
       const response = await tools_router.chat({ 
         messages, 
         model,
@@ -322,32 +353,74 @@ export class agent_runtime {
         sessionId: session_id,
         executionId
       });
+      toolEndTime = Date.now();
+
+      if (response && (response as any).timeoutOccurred) {
+        timeouts++;
+        executionManager.recordTimeout(executionId);
+      }
+
+      // Verification
+      executionManager.transition(executionId, "Verifying");
+      verifyStartTime = Date.now();
 
       const toolsExecutedCount = (response as any).toolsExecutedCount || 0;
-      const isCreateOrGenerate = ["create", "build", "generate", "write", "make"].some(verb => prompt.toLowerCase().includes(verb));
       const finalGitStatus = getWorkspaceGitStatus();
       const filesModified = finalGitStatus !== initialGitStatus;
 
-      if (isCreateOrGenerate && (toolsExecutedCount === 0 || (!filesModified && toolsExecutedCount <= 1))) {
+      const verificationPassed = verifyExecutionSuccess(intentResult.intent, toolsExecutedCount, filesModified);
+      verifyEndTime = Date.now();
+
+      if (!verificationPassed) {
         validator_retries++;
-        extraSystemInstruction = `CRITICAL VALIDATION FAILURE: You attempted to answer without producing any file artifacts or modifications in the workspace. The user explicitly requested to '${intent}'. You MUST use specific tools (such as write_file or replace_file_content) to write the files or execute commands. Text-only explanations are rejected. You cannot complete the task without creating/modifying files.`;
+        retries++;
+        failures++;
+        executionManager.recordRetry(executionId);
+        extraSystemInstruction = `CRITICAL VALIDATION FAILURE: You attempted to answer without producing any file changes or successfully executing action tools. The user requested: '${intentResult.intent}'. You MUST use specific tools (like write_file, replace_file_content, run_command) to execute this task. Direct textual responses are rejected.`;
         continue;
       }
 
-      ContextOS.state.complete();
-      logger.info({
-        event: "execution_complete",
+      executionManager.transition(executionId, "Completed");
+      
+      RuntimeTelemetry.record({
         sessionId: session_id,
-        executionId
-      }, `Completed execution ${executionId} for session ${session_id}`);
+        intent: intentResult.intent,
+        executionDurationMs: Date.now() - startTime,
+        plannerDurationMs: plannerEndTime - plannerStartTime,
+        toolDurationMs: toolEndTime - toolStartTime,
+        verificationDurationMs: verifyEndTime - verifyStartTime,
+        failures,
+        retries,
+        cancellations: 0,
+        timeouts,
+        success: true
+      });
+
+      const filteredContent = sanitizeContent(response?.content || "");
+
       return {
         id: executionId,
         session_id,
-        content: response?.content || ""
+        content: filteredContent
       };
     }
 
-    ContextOS.state.complete();
+    executionManager.transition(executionId, "Failed");
+
+    RuntimeTelemetry.record({
+      sessionId: session_id,
+      intent: intentResult.intent,
+      executionDurationMs: Date.now() - startTime,
+      plannerDurationMs: plannerEndTime - plannerStartTime,
+      toolDurationMs: toolEndTime - toolStartTime,
+      verificationDurationMs: verifyEndTime - verifyStartTime,
+      failures,
+      retries,
+      cancellations: 0,
+      timeouts,
+      success: false
+    });
+
     return {
       id: executionId,
       session_id,
@@ -362,6 +435,18 @@ export class agent_runtime {
   ) {
     const contextId = `ctx-${session_id}`;
     const executionId = `exec-${crypto.randomUUID()}`;
+    const session = executionManager.startSession(executionId);
+
+    const startTime = Date.now();
+    let plannerStartTime = 0;
+    let plannerEndTime = 0;
+    let toolStartTime = 0;
+    let toolEndTime = 0;
+    let verifyStartTime = 0;
+    let verifyEndTime = 0;
+    let failures = 0;
+    let retries = 0;
+    let timeouts = 0;
 
     logger.info({
       event: "execution_stream_start",
@@ -370,11 +455,21 @@ export class agent_runtime {
       prompt
     }, `Starting streaming execution ${executionId} for session ${session_id}`);
 
-    ContextOS.state.startExecution(contextId, session_id, executionId);
+    const intentResult = intentEngine.classify(prompt);
+    const requiresExecution = [
+      "Workspace Generation",
+      "File Generation",
+      "Coding",
+      "Website Generation",
+      "Image Generation",
+      "Python",
+      "Bash",
+      "Tool Execution",
+      "Git"
+    ].includes(intentResult.intent);
 
-    const intent = classifyIntent(prompt);
-
-    if (intent === "Conversation") {
+    if (!requiresExecution) {
+      executionManager.transition(executionId, "Planning");
       const model = router.detect_model(prompt);
       await router.ensure(model);
 
@@ -397,7 +492,7 @@ export class agent_runtime {
       }
 
       const messages = [
-        { role: "system", content: "You are tu2pu, a helpful and premium AI coding and development collaborator. You are bilingual and fluent in English, Tamil, and Tanglish (Tamil written in English script). If the user chats in casual Tanglish (e.g., 'enna pandra', 'eppadi irukeenga', 'machan'), respond naturally, warm, and concisely in matching friendly Tanglish (e.g., 'naan nalla iruken machan, neenga eppadi irukeenga?'). Never treat Tamil/Tanglish words as spelling errors or typos (never reply with 'Did you mean Pandora?'). Respond naturally and concisely without calling tools or generating plans." },
+        { role: "system", content: "You are tu2pu, a helpful and premium AI coding and development collaborator. You are bilingual and fluent in English, Tamil, and Tanglish (Tamil written in English script). If the user chats in casual Tanglish (e.g., 'enna da', 'enna pandra', 'eppadi irukeenga', 'machan', 'nallarukan', 'saptiya'), respond naturally, warm, and concisely in matching friendly Tanglish (e.g., 'naan nalla iruken machan, neenga eppadi irukeenga?'). Never treat Tamil/Tanglish words as spelling errors or typos. Respond naturally and concisely without calling tools or generating plans." },
         ...historical_messages,
         { role: "user", content: prompt }
       ];
@@ -407,11 +502,35 @@ export class agent_runtime {
         content += token;
         onToken(token);
       });
-      ContextOS.state.complete();
+      executionManager.transition(executionId, "Completed");
+      
+      RuntimeTelemetry.record({
+        sessionId: session_id,
+        intent: intentResult.intent,
+        executionDurationMs: Date.now() - startTime,
+        plannerDurationMs: 0,
+        toolDurationMs: 0,
+        verificationDurationMs: 0,
+        failures: 0,
+        retries: 0,
+        cancellations: 0,
+        timeouts: 0,
+        success: true
+      });
+
       return { id: executionId, session_id, content };
     }
 
     const initialGitStatus = getWorkspaceGitStatus();
+
+    // Emit Planning Graph Progress Event
+    const graphStr = getExecutionGraphForIntent(intentResult.intent);
+    onToken(JSON.stringify({
+      type: "progress",
+      tool: "planner",
+      stage: `Planning... Graph: ${graphStr}`,
+      status: "running"
+    }));
 
     const promptCtx = await ContextOS.prompts.build({
       contextId,
@@ -432,7 +551,8 @@ export class agent_runtime {
     }
 
     const profile = detectProfile(prompt);
-    ContextOS.state.transition("Execution", "Triggering intent stream");
+    executionManager.transition(executionId, "Planning");
+    plannerStartTime = Date.now();
 
     if (profile.intent === "file_analysis") {
       const contextData = await runFileAnalysisPipeline(prompt, contextId);
@@ -446,7 +566,7 @@ export class agent_runtime {
         await router.ensure(profile.llm);
         const result = await tools_router.chat_stream({ messages, model: profile.llm }, onToken);
         
-        ContextOS.state.complete();
+        executionManager.transition(executionId, "Completed");
         return { id: executionId, session_id, content: result?.content || "" };
       }
     }
@@ -459,22 +579,31 @@ export class agent_runtime {
     });
 
     const session_context_str = session_context.workspace.map((w: WorkspaceChunk) => `File: ${w.path}\n${w.content}`).join("\n");
+    plannerEndTime = Date.now();
 
     let validator_retries = 0;
     let extraSystemInstruction = "";
 
     while (validator_retries < 3) {
+      executionManager.transition(executionId, "Planning");
       const messages = planner.plan({
         system_prompt: system_prompt + (extraSystemInstruction ? "\n\n" + extraSystemInstruction : ""),
         history: historical_messages,
         context: [session_context_str],
-        user_prompt: prompt
+        user_prompt: prompt,
+        intentInfo: {
+          intent: intentResult.intent,
+          confidence: intentResult.confidence,
+          requiredCapabilities: intentResult.requiredCapabilities,
+          requiredTools: intentResult.requiredTools
+        }
       });
 
       const model = router.detect_model(prompt);
       await router.ensure(model);
 
-      ContextOS.state.transition("ToolExecution", `Running interactive tool selection stream (attempt ${validator_retries + 1})`);
+      executionManager.transition(executionId, "Executing");
+      toolStartTime = Date.now();
       const result = await tools_router.chat_stream({ 
         messages, 
         model,
@@ -482,29 +611,76 @@ export class agent_runtime {
         sessionId: session_id,
         executionId
       }, onToken);
+      toolEndTime = Date.now();
+
+      if (result && (result as any).timeoutOccurred) {
+        timeouts++;
+        executionManager.recordTimeout(executionId);
+      }
+
+      // Verification
+      executionManager.transition(executionId, "Verifying");
+      verifyStartTime = Date.now();
 
       const toolsExecutedCount = (result as any).toolsExecutedCount || 0;
-      const isCreateOrGenerate = ["create", "build", "generate", "write", "make"].some(verb => prompt.toLowerCase().includes(verb));
       const finalGitStatus = getWorkspaceGitStatus();
       const filesModified = finalGitStatus !== initialGitStatus;
 
-      if (isCreateOrGenerate && (toolsExecutedCount === 0 || (!filesModified && toolsExecutedCount <= 1))) {
+      const verificationPassed = verifyExecutionSuccess(intentResult.intent, toolsExecutedCount, filesModified);
+      verifyEndTime = Date.now();
+
+      if (!verificationPassed) {
         validator_retries++;
-        extraSystemInstruction = `CRITICAL VALIDATION FAILURE: You attempted to answer without producing any file artifacts or modifications in the workspace. The user explicitly requested to '${intent}'. You MUST use specific tools (such as write_file or replace_file_content) to write the files or execute commands. Text-only explanations are rejected. You cannot complete the task without creating/modifying files.`;
-        onToken(`\n\x1b[33m⚠ Action validation failed: no files written. Retrying action execution...\x1b[0m\n`);
+        retries++;
+        failures++;
+        executionManager.recordRetry(executionId);
+        extraSystemInstruction = `CRITICAL VALIDATION FAILURE: You attempted to answer without producing any file changes or successfully executing action tools. You MUST use specific tools (like write_file, replace_file_content, run_command) to execute this task. Direct textual responses are rejected.`;
+        onToken(JSON.stringify({
+          type: "progress",
+          tool: "verifier",
+          stage: "Verification failed. Retrying execution graph...",
+          status: "running"
+        }));
         continue;
       }
 
-      ContextOS.state.complete();
-      logger.info({
-        event: "execution_stream_complete",
+      executionManager.transition(executionId, "Completed");
+      
+      RuntimeTelemetry.record({
         sessionId: session_id,
-        executionId
-      }, `Completed streaming execution ${executionId} for session ${session_id}`);
-      return { id: executionId, session_id, content: result?.content || "" };
+        intent: intentResult.intent,
+        executionDurationMs: Date.now() - startTime,
+        plannerDurationMs: plannerEndTime - plannerStartTime,
+        toolDurationMs: toolEndTime - toolStartTime,
+        verificationDurationMs: verifyEndTime - verifyStartTime,
+        failures,
+        retries,
+        cancellations: 0,
+        timeouts,
+        success: true
+      });
+
+      const filteredContent = sanitizeContent(result?.content || "");
+
+      return { id: executionId, session_id, content: filteredContent };
     }
 
-    ContextOS.state.complete();
+    executionManager.transition(executionId, "Failed");
+
+    RuntimeTelemetry.record({
+      sessionId: session_id,
+      intent: intentResult.intent,
+      executionDurationMs: Date.now() - startTime,
+      plannerDurationMs: plannerEndTime - plannerStartTime,
+      toolDurationMs: toolEndTime - toolStartTime,
+      verificationDurationMs: verifyEndTime - verifyStartTime,
+      failures,
+      retries,
+      cancellations: 0,
+      timeouts,
+      success: false
+    });
+
     return {
       id: executionId,
       session_id,
