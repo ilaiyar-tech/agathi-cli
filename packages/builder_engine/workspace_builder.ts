@@ -5,6 +5,7 @@ import axios from "axios";
 import { builder } from "./builder_engine.js";
 import { workspaceSnapshot } from "./workspace_snapshot.js";
 import { eventBus } from "../core/index.js";
+import { postModelRequest } from "../router/index.js";
 
 export interface FileGen {
   path: string;
@@ -20,8 +21,8 @@ export class workspace_builder {
 
   private async callLLM(systemPrompt: string, userPrompt: string): Promise<string> {
     try {
-      const response = await axios.post(
-        "http://127.0.0.1:8012/v1/chat/completions",
+      const response = await postModelRequest(
+        "/v1/chat/completions",
         {
           messages: [
             { role: "system", content: systemPrompt },

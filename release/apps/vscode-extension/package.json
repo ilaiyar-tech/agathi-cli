@@ -1,0 +1,107 @@
+{
+  "name": "ilaiyar-vscode",
+  "displayName": "Ilaiyar Platform",
+  "description": "VS Code integration for the Ilaiyar Runtime Platform",
+  "version": "0.1.0",
+  "publisher": "ilaiyar",
+  "type": "module",
+  "engines": {
+    "vscode": "^1.75.0"
+  },
+  "categories": [
+    "Programming Languages",
+    "Other"
+  ],
+  "activationEvents": [
+    "onView:ilaiyar-chat-view",
+    "onView:ilaiyar-explorer-view"
+  ],
+  "main": "./dist/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "ilaiyar.chat",
+        "title": "Ilaiyar: Chat"
+      },
+      {
+        "command": "ilaiyar.continue",
+        "title": "Ilaiyar: Continue"
+      },
+      {
+        "command": "ilaiyar.explain",
+        "title": "Ilaiyar: Explain Code"
+      },
+      {
+        "command": "ilaiyar.refactor",
+        "title": "Ilaiyar: Refactor Code"
+      },
+      {
+        "command": "ilaiyar.fix",
+        "title": "Ilaiyar: Fix Code Issues"
+      },
+      {
+        "command": "ilaiyar.generateTests",
+        "title": "Ilaiyar: Generate Tests"
+      },
+      {
+        "command": "ilaiyar.summarizeWorkspace",
+        "title": "Ilaiyar: Summarize Workspace"
+      }
+    ],
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "ilaiyar-sidebar",
+          "title": "Ilaiyar",
+          "icon": "$(hubot)"
+        }
+      ]
+    },
+    "views": {
+      "ilaiyar-sidebar": [
+        {
+          "type": "webview",
+          "id": "ilaiyar-chat-view",
+          "name": "Ilaiyar Chat"
+        },
+        {
+          "id": "ilaiyar-explorer-view",
+          "name": "Workspace Explorer"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "Ilaiyar",
+      "properties": {
+        "ilaiyar.runtimeUrl": {
+          "type": "string",
+          "default": "http://127.0.0.1:9988",
+          "description": "API Endpoint URL for the Ilaiyar Runtime DXP"
+        },
+        "ilaiyar.pat": {
+          "type": "string",
+          "default": "",
+          "description": "Developer Personal Access Token (PAT)"
+        },
+        "ilaiyar.model": {
+          "type": "string",
+          "default": "ilaiyar-runtime",
+          "description": "Default model key to target"
+        },
+        "ilaiyar.temperature": {
+          "type": "number",
+          "default": 0.2,
+          "description": "Temperature parameter for generation"
+        },
+        "ilaiyar.workspaceScope": {
+          "type": "boolean",
+          "default": true,
+          "description": "Automatically scope context search to current workspace"
+        }
+      }
+    }
+  },
+  "devDependencies": {
+    "@types/vscode": "^1.75.0"
+  }
+}

@@ -66,7 +66,7 @@ fontSize:28,
 fontWeight:700
 }}
 >
-Agathi AI
+tu2pu AI
 </div>
 
 <div

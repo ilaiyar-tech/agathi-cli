@@ -12,19 +12,25 @@ import { sessions } from "../../packages/session_manager/index.js";
 import { context } from "../../packages/context_engine/index.js";
 import { projects } from "../../packages/project_manager/index.js";
 import { scheduler } from "../../packages/task_scheduler/index.js";
+import { agent_runtime } from "../../packages/agent_runtime/agent_runtime.js";
+import { AgentOrchestrationLayer } from "../../packages/agent_orchestration/agent_orchestration.js";
+import { memory } from "../../packages/memory/memory_engine.js";
+import { get_active_model, set_active_model, list_models } from "../../packages/model_manager/index.js";
+import { getModelEndpoint, postModelRequest } from "../../packages/router/index.js";
 
 marked.setOptions({
   renderer: new TerminalRenderer() as any
 });
 
 const SERVER = "http://localhost:8100";
-const HISTORY_FILE = path.join(os.homedir(), ".agathi_history");
+const HISTORY_FILE = path.join(os.homedir(), ".tu2pu_history");
 const MAX_HISTORY = 500;
 
 const SLASH_COMMANDS = [
   "/help", "/exit", "/quit", "/clear", "/history", "/session", "/new",
   "/models", "/providers", "/projects", "/tools", "/status", "/logs",
-  "/config", "/reset", "/attach", "/stream", "/workspace", "/tasks", "/multiline", "/m"
+  "/config", "/reset", "/attach", "/stream", "/workspace", "/tasks", "/multiline", "/m",
+  "/timer", "/schedule", "/subagent", "/cancel"
 ];
 
 interface ShellState {
@@ -98,13 +104,49 @@ function print_help() {
     ["/stream", "Toggle streaming responses on/off"],
     ["/workspace <dir>", "Switch active workspace directory"],
     ["/tasks", "Show task queue visibility"],
-    ["/multiline, /m", "Enter multiline input mode"]
+    ["/multiline, /m", "Enter multiline input mode"],
+    ["/timer <sec> <msg>", "Schedule a prompt execution after <sec> delay"],
+    ["/schedule <sec> <msg>", "Schedule recurring prompt execution every <sec>"],
+    ["/cancel <task_id>", "Cancel a scheduled recurring or one-shot task"],
+    ["/subagent <action> [args]", "Manage sub-agents (actions: spawn, list, send, history, status)"]
   ];
   console.log(chalk.bold.cyan("Available commands:"));
   const width = Math.max(...rows.map(([c]) => c.length));
   rows.forEach(([cmd, desc]) => {
     console.log("  " + chalk.magenta(cmd.padEnd(width + 2)) + chalk.gray(desc));
   });
+}
+
+async function isServerOnline(): Promise<boolean> {
+  try {
+    const controller = new AbortController();
+    const id = setTimeout(() => controller.abort(), 300);
+    const res = await fetch(`${SERVER}/system/health`, { signal: controller.signal });
+    clearTimeout(id);
+    return res.ok;
+  } catch {
+    return false;
+  }
+}
+
+function translateError(e: any): string {
+  const msg = String(e.message || e);
+  if (msg.includes("ECONNREFUSED") || msg.includes("connect ECONNREFUSED")) {
+    return `Oh no, macha! 😟 I couldn't connect to the backend server. Make sure it's running by starting it with 'npm start' or 'npm run dev'.`;
+  }
+  if (msg.includes("model_not_found")) {
+    return `Bro! 🤯 I couldn't find that AI model. Check if it's listed under '/models' or registered in models.json.`;
+  }
+  if (msg.includes("model_registry_not_found")) {
+    return `Macha, models.json registry file is missing! 😭 Run 'tu2pu doctor' to verify your workspace paths.`;
+  }
+  if (msg.includes("API request failed") || msg.includes("API error")) {
+    return `Oh no, da! 😭 The API request failed. The server might be experiencing issues. Let me fall back to local routing.`;
+  }
+  if (msg.includes("fetch failed") || msg.includes("network error")) {
+    return `Aiyo, network issue, da! 🌐 Either the server is offline or the connection timed out.`;
+  }
+  return `Prachana, macha! 🔧 Something went wrong: ${msg}. Let's inspect the logs to trace it.`;
 }
 
 export async function launch_interactive(opts: {
@@ -234,7 +276,7 @@ export async function launch_interactive(opts: {
         rl.prompt();
         return;
       }
-      await handle_slash_command(trimmed, state, rl);
+      await handle_slash_command(trimmed, state, rl, processMessage);
       isExecuting = false;
       rl.setPrompt(prompt_label());
       rl.prompt();
@@ -251,6 +293,36 @@ export async function launch_interactive(opts: {
     try {
       chatHistory.push({ role: "user", content: trimmed });
       let currentLoaderText = "Thinking...";
+
+      // --- OFFLINE FALLBACK ---
+      const isOnline = await isServerOnline();
+      if (!isOnline) {
+        if (state.streaming) {
+          process.stdout.write(chalk.cyan("\nஅ (Local) › "));
+          let assistantContent = "";
+          const localRuntime = new agent_runtime();
+          await localRuntime.chat_stream(trimmed, state.sessionId, (token: string) => {
+            process.stdout.write(token);
+            assistantContent += token;
+          });
+          chatHistory.push({ role: "assistant", content: assistantContent });
+          console.log("\n");
+        } else {
+          const localSpinner = ora({ text: "Thinking locally...", color: "cyan" }).start();
+          const localRuntime = new agent_runtime();
+          const res = await localRuntime.chat(trimmed, state.sessionId);
+          localSpinner.stop();
+          console.log();
+          console.log(chalk.cyan("அ (Local) ›"));
+          printMarkdown(res.content);
+          console.log();
+          chatHistory.push({ role: "assistant", content: res.content });
+        }
+        isExecuting = false;
+        rl.prompt();
+        return;
+      }
+      // --- END OFFLINE FALLBACK ---
 
       if (state.streaming) {
         let loaderTimer: any = null;
@@ -398,10 +470,11 @@ export async function launch_interactive(opts: {
         console.log();
       }
     } catch (e: any) {
+      const friendly = translateError(e);
       if (spinner) {
-        spinner.fail(chalk.red(e.message));
+        spinner.fail(chalk.red(friendly));
       } else {
-        console.log(chalk.red(`\nError: ${e.message}`));
+        console.log(chalk.red(`\n${friendly}`));
       }
     } finally {
       currentTask = null;
@@ -417,7 +490,12 @@ export async function launch_interactive(opts: {
   });
 }
 
-async function handle_slash_command(cmd: string, state: ShellState, _rl: readline.Interface): Promise<void> {
+async function handle_slash_command(
+  cmd: string,
+  state: ShellState,
+  _rl: readline.Interface,
+  processMessage: (trimmed: string) => Promise<void>
+): Promise<void> {
   const [name, ...rest] = cmd.split(" ");
   const arg = rest.join(" ").trim();
 
@@ -447,7 +525,7 @@ async function handle_slash_command(cmd: string, state: ShellState, _rl: readlin
         list.forEach((s) =>
           console.log(
             chalk.gray("  •") + " " + chalk.white(s.id) +
-            chalk.gray("  created: " + new Date(s.created_at).toLocaleString())
+            chalk.gray("  created: " + new Date(s.startedAt).toLocaleString())
           )
         );
         return;
@@ -467,15 +545,36 @@ async function handle_slash_command(cmd: string, state: ShellState, _rl: readlin
     case "/models": {
       const spinner = ora("Fetching models...").start();
       try {
-        const data = await api<any[]>("GET", "/models");
-        spinner.succeed(chalk.green("Models loaded"));
-        if (arg) {
-          console.log(chalk.green(`  Switched active model to: ${arg}`));
-        } else if (Array.isArray(data)) {
-          data.forEach((m: any) => console.log(chalk.gray("  •") + " " + chalk.white(m.id || m.name || JSON.stringify(m))));
+        const isOnline = await isServerOnline();
+        if (isOnline) {
+          const data = await api<any[]>("GET", "/models");
+          spinner.succeed(chalk.green("Models loaded"));
+          if (arg) {
+            await api("POST", `/model/${arg}`);
+            console.log(chalk.green(`  Switched active model to: ${arg}`));
+          } else if (Array.isArray(data)) {
+            data.forEach((m: any) => {
+              const activeLabel = get_active_model() === m.name ? chalk.bold.green(" (active)") : "";
+              console.log(chalk.gray("  •") + " " + chalk.white(m.name || m.id) + activeLabel + chalk.gray(` [${m.provider}]`));
+            });
+          }
+        } else {
+          spinner.stop();
+          console.log(chalk.yellow("  [Offline Fallback: Local model_manager active]"));
+          const data = list_models();
+          if (arg) {
+            set_active_model(arg);
+            console.log(chalk.green(`  Switched active model locally to: ${arg}`));
+          } else {
+            console.log(chalk.bold.cyan("Models (Local):"));
+            data.forEach((m: any) => {
+              const activeLabel = get_active_model() === m.name ? chalk.bold.green(" (active)") : "";
+              console.log(chalk.gray("  •") + " " + chalk.white(m.name) + activeLabel + chalk.gray(` [${m.provider}]`));
+            });
+          }
         }
       } catch (e: any) {
-        spinner.fail(chalk.yellow("Server not reachable — cannot fetch models"));
+        spinner.fail(chalk.red(`Failed to fetch or switch models: ${e.message}`));
       }
       return;
     }
@@ -503,7 +602,7 @@ async function handle_slash_command(cmd: string, state: ShellState, _rl: readlin
       if (active) {
         console.log(chalk.gray("  Active project: ") + chalk.white(active.name) + chalk.gray(` (${active.rootPath})`));
       } else {
-        console.log(chalk.gray("  No active project — run 'agathi project init' outside the shell, or /workspace <dir>."));
+        console.log(chalk.gray("  No active project — run 'tu2pu project init' outside the shell, or /workspace <dir>."));
       }
       return;
     }
@@ -615,6 +714,195 @@ async function handle_slash_command(cmd: string, state: ShellState, _rl: readlin
       } catch (e: any) {
         console.log(chalk.red("  " + e.message));
       }
+      return;
+    }
+
+    case "/timer": {
+      const seconds = parseInt(arg.split(" ")[0]);
+      const promptText = arg.split(" ").slice(1).join(" ").trim();
+      if (isNaN(seconds) || !promptText) {
+        console.log(chalk.yellow("  Usage: /timer <seconds> <message>"));
+        return;
+      }
+      const taskId = `timer_${Date.now()}`;
+      console.log(chalk.green(`  Scheduled task '${taskId}' in ${seconds}s...`));
+      scheduler.schedule({
+        id: taskId,
+        timeoutMs: seconds * 1000,
+        action: async () => {
+          console.log(chalk.bold.magenta(`\n\n[Timer Fired: ${taskId}]`) + chalk.cyan(` Running: ${promptText}\n`));
+          await processMessage(promptText);
+        }
+      });
+      return;
+    }
+
+    case "/schedule": {
+      const seconds = parseInt(arg.split(" ")[0]);
+      const promptText = arg.split(" ").slice(1).join(" ").trim();
+      if (isNaN(seconds) || !promptText) {
+        console.log(chalk.yellow("  Usage: /schedule <interval_seconds> <message>"));
+        return;
+      }
+      const taskId = `schedule_${Date.now()}`;
+      console.log(chalk.green(`  Scheduled recurring task '${taskId}' every ${seconds}s...`));
+      scheduler.schedule({
+        id: taskId,
+        intervalMs: seconds * 1000,
+        action: async () => {
+          console.log(chalk.bold.magenta(`\n\n[Schedule Fired: ${taskId}]`) + chalk.cyan(` Running: ${promptText}\n`));
+          await processMessage(promptText);
+        }
+      });
+      return;
+    }
+
+    case "/cancel": {
+      if (!arg) {
+        console.log(chalk.yellow("  Usage: /cancel <task_id>"));
+        return;
+      }
+      scheduler.cancel(arg);
+      console.log(chalk.green(`  Cancelled scheduled task: ${arg}`));
+      return;
+    }
+
+    case "/subagent": {
+      const aol = new AgentOrchestrationLayer();
+      const parts = arg.split(" ");
+      const subAction = parts[0].toLowerCase();
+      const subArg = parts.slice(1).join(" ").trim();
+
+      if (subAction === "spawn") {
+        const name = subArg.split(" ")[0];
+        const prompt = subArg.split(" ").slice(1).join(" ").trim();
+        if (!name || !prompt) {
+          console.log(chalk.yellow("  Usage: /subagent spawn <name> <instruction>"));
+          return;
+        }
+        const agentId = `sub_${name}`;
+        await aol.registerAgent(agentId, name, "remote", ["chat", "reasoning"]);
+        const sessId = await aol.createAgentSession(agentId, "interactive_workflow", state.workspace, "execution_0", "user");
+        await aol.delegateTask(sessId, agentId, prompt);
+        console.log(chalk.green(`  Spawned sub-agent '${name}' with ID '${agentId}'.`));
+        return;
+      }
+
+      if (subAction === "list") {
+        const list = await aol.discoverAgents([]);
+        if (list.length === 0) {
+          console.log(chalk.gray("  No sub-agents registered."));
+        } else {
+          console.log(chalk.bold.cyan("Sub-Agents:"));
+          for (const agent of list) {
+            console.log(chalk.gray("  •") + " " + chalk.white(agent.name) + chalk.gray(` (${agent.id})`) + " - status: " + chalk.green(agent.status));
+          }
+        }
+        return;
+      }
+
+      if (subAction === "send") {
+        const name = subArg.split(" ")[0];
+        const message = subArg.split(" ").slice(1).join(" ").trim();
+        if (!name || !message) {
+          console.log(chalk.yellow("  Usage: /subagent send <name> <message>"));
+          return;
+        }
+        const agentId = `sub_${name}`;
+        // Find session
+        const sessRow = memory.database.prepare(
+          "select id from agent_sessions where agent_id = ? order by timestamp desc limit 1"
+        ).get(agentId) as any;
+        if (!sessRow) {
+          console.log(chalk.red(`  No active session found for sub-agent: ${name}`));
+          return;
+        }
+        const sessId = sessRow.id;
+        // Send user message
+        await aol.sendMessage(sessId, "user", agentId, message);
+        console.log(chalk.gray(`  Message sent to '${name}'...`));
+        
+        // Get sub-agent background prompt/task
+        const taskRow = memory.database.prepare(
+          "select description from agent_tasks where session_id = ? order by id desc limit 1"
+        ).get(sessId) as any;
+        const subagentInstruction = taskRow ? taskRow.description : "You are a helpful assistant.";
+
+        // Asynchronously execute sub-agent reasoning
+        setTimeout(async () => {
+          try {
+            const systemPrompt = `You are a specialized sub-agent named ${name}. Your instructions are: "${subagentInstruction}". Respond to the user message.`;
+            const response = await postModelRequest("/v1/chat/completions", {
+              messages: [
+                { role: "system", content: systemPrompt },
+                { role: "user", content: message }
+              ],
+              temperature: 0.2
+            });
+            const reply = response.data.choices?.[0]?.message?.content || "";
+            await aol.sendMessage(sessId, agentId, "user", reply);
+            console.log(chalk.bold.green(`\n\n[Sub-Agent ${name} Replied]`) + chalk.cyan(` (type '/subagent history ${name}' to view replies)`));
+          } catch (err: any) {
+            console.error(`\nSub-agent ${name} execution error:`, err.message);
+          }
+        }, 200);
+        return;
+      }
+
+      if (subAction === "history") {
+        const name = subArg;
+        if (!name) {
+          console.log(chalk.yellow("  Usage: /subagent history <name>"));
+          return;
+        }
+        const agentId = `sub_${name}`;
+        const sessRow = memory.database.prepare(
+          "select id from agent_sessions where agent_id = ? order by timestamp desc limit 1"
+        ).get(agentId) as any;
+        if (!sessRow) {
+          console.log(chalk.red(`  No active session found for sub-agent: ${name}`));
+          return;
+        }
+        const sessId = sessRow.id;
+        const rows = memory.database.prepare(
+          "select sender_id, receiver_id, content, timestamp from agent_messages where session_id = ? order by timestamp asc"
+        ).all(sessId) as any[];
+        if (rows.length === 0) {
+          console.log(chalk.gray(`  No messages in history for '${name}'.`));
+        } else {
+          console.log(chalk.bold.cyan(`Conversation History with sub-agent '${name}':`));
+          rows.forEach((r) => {
+            const sender = r.sender_id === "user" ? chalk.magenta("You") : chalk.green(name);
+            console.log(chalk.bold(`  ${sender}:`) + " " + r.content);
+          });
+          console.log();
+        }
+        return;
+      }
+
+      if (subAction === "status") {
+        const name = subArg;
+        if (!name) {
+          console.log(chalk.yellow("  Usage: /subagent status <name>"));
+          return;
+        }
+        const agentId = `sub_${name}`;
+        const health = memory.database.prepare(
+          "select latency, success_rate, load, availability from agent_health where agent_id = ?"
+        ).get(agentId) as any;
+        if (!health) {
+          console.log(chalk.red(`  No status metrics available for '${name}'.`));
+        } else {
+          console.log(chalk.bold.cyan(`Status Metrics for sub-agent '${name}':`));
+          console.log(chalk.gray("  Latency:      ") + chalk.white(`${health.latency}ms`));
+          console.log(chalk.gray("  Success Rate: ") + chalk.white(`${Math.round(health.success_rate * 100)}%`));
+          console.log(chalk.gray("  Current Load: ") + chalk.white(`${Math.round(health.load * 100)}%`));
+          console.log(chalk.gray("  Availability: ") + (health.availability === 1 ? chalk.green("Online") : chalk.red("Offline")));
+        }
+        return;
+      }
+
+      console.log(chalk.yellow("  Usage: /subagent <spawn | list | send | history | status> [args]"));
       return;
     }
 

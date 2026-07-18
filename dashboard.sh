@@ -1,5 +1,5 @@
 #!/bin/bash
-echo "--- Initializing Agathi AI Dashboard ---"
+echo "--- Initializing tu2pu AI Dashboard ---"
 # Check if the required build exists
 if [ ! -d "dist" ]; then
     echo "Build not found. Running build..."

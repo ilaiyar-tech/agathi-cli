@@ -1,10 +1,10 @@
 {
-  "name": "agathi-cli",
+  "name": "thudupu-ai",
   "version": "1.0.0",
   "description": "",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1",
+    "test": "npx tsx scripts/validate_architecture.ts && npx tsx scripts/run_tests.ts",
     "dev": "tsx apps/server/src/server.ts",
     "cli": "tsx apps/cli/index.ts",
     "build": "tsc",
@@ -19,7 +19,7 @@
     "@fastify/cors": "^11.3.0",
     "@qdrant/js-client-rest": "^1.18.0",
     "axios": "^1.18.1",
-    "better-sqlite3": "^12.11.1",
+    "better-sqlite3": "12.11.1",
     "chalk": "^4.1.2",
     "chokidar": "^5.0.0",
     "cli-progress": "^3.12.0",
@@ -64,6 +64,8 @@
     "prettier": "^3.9.5"
   },
   "bin": {
-    "agathi": "./dist/apps/cli/index.js"
+    "tu2pu": "./dist/apps/cli/index.js",
+    "thu2pu": "./dist/apps/cli/index.js",
+    "agathi": "./dist/apps/cli/agathi.js"
   }
 }

@@ -4,9 +4,11 @@ import chalk from "chalk";
 import ora from "ora";
 import readline from "node:readline/promises";
 import { stdin, stdout } from "node:process";
+import fs from "node:fs";
 
 import { sessions } from "../../packages/session_manager/index.js";
 import { planner } from "../../packages/prompt_planner/index.js";
+import { Transcoder } from "../../packages/transcoder/index.js";
 
 import { launch_interactive } from "./interactive.js";
 import { register_project_commands } from "./commands/project.js";
@@ -16,96 +18,145 @@ import { register_deploy_commands } from "./commands/deploy.js";
 const SERVER = "http://localhost:8100";
 
 async function stream_chat_api(prompt: string, session_id: string, onToken: (token: string) => void) {
-  const res = await fetch(`${SERVER}/v1/chat/completions`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      model: "chat",
-      messages: [{ role: "user", content: prompt }],
-      stream: true
-    })
-  });
+  try {
+    const res = await fetch(`${SERVER}/v1/chat/completions`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model: "chat",
+        messages: [{ role: "user", content: prompt }],
+        stream: true
+      })
+    });
 
-  if (!res.ok) {
-    const errText = await res.text();
-    throw new Error(`API error: ${errText}`);
-  }
-
-  const reader = res.body?.getReader();
-  if (!reader) return;
-
-  const decoder = new TextDecoder();
-  let buffer = "";
-
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
-
-    buffer += decoder.decode(value, { stream: true });
-    const lines = buffer.split("\n");
-    buffer = lines.pop() ?? "";
-
-    for (const line of lines) {
-      if (!line.startsWith("data:")) continue;
-      const json = line.replace("data:", "").trim();
-      if (json === "[DONE]") continue;
-
-      try {
-        const obj = JSON.parse(json);
-        if (obj.error) {
-          onToken(`\nError: ${obj.error.message}\n`);
-          continue;
-        }
-        const choice = obj.choices?.[0];
-        if (choice?.delta?.content) {
-          onToken(choice.delta.content);
-        }
-      } catch (e) {}
+    if (!res.ok) {
+      const errText = await res.text();
+      throw new Error(`API error: ${errText}`);
     }
+
+    const reader = res.body?.getReader();
+    if (!reader) return;
+
+    const decoder = new TextDecoder();
+    let buffer = "";
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split("\n");
+      buffer = lines.pop() ?? "";
+
+      for (const line of lines) {
+        if (!line.startsWith("data:")) continue;
+        const json = line.replace("data:", "").trim();
+        if (json === "[DONE]") continue;
+
+        try {
+          const obj = JSON.parse(json);
+          if (obj.error) {
+            onToken(`\nError: ${obj.error.message}\n`);
+            continue;
+          }
+          const choice = obj.choices?.[0];
+          if (choice?.delta?.content) {
+            onToken(choice.delta.content);
+          }
+        } catch (e) {}
+      }
+    }
+  } catch (err: any) {
+    if (err.code === "ECONNREFUSED" || err.message.includes("fetch") || err.message.includes("connect")) {
+      console.log(chalk.yellow("\n  [Offline Fallback: Local Runtime Active]\n"));
+      const { agent_runtime } = await import("../../packages/agent_runtime/agent_runtime.js");
+      const localRuntime = new agent_runtime();
+      await localRuntime.chat_stream(prompt, session_id, onToken);
+      return;
+    }
+    throw err;
   }
 }
 
 async function block_chat_api(prompt: string, session_id: string) {
-  const res = await fetch(`${SERVER}/v1/chat/completions`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      model: "chat",
-      messages: [{ role: "user", content: prompt }],
-      stream: false
-    })
-  });
-  if (!res.ok) throw new Error("API request failed");
-  const data = await res.json() as any;
-  return { content: data.choices?.[0]?.message?.content || "" };
+  try {
+    const res = await fetch(`${SERVER}/v1/chat/completions`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model: "chat",
+        messages: [{ role: "user", content: prompt }],
+        stream: false
+      })
+    });
+    if (!res.ok) throw new Error("API request failed");
+    const data = await res.json() as any;
+    return { content: data.choices?.[0]?.message?.content || "" };
+  } catch (err: any) {
+    if (err.code === "ECONNREFUSED" || err.message.includes("fetch") || err.message.includes("connect")) {
+      console.log(chalk.yellow("\n  [Offline Fallback: Local Runtime Active]\n"));
+      const { agent_runtime } = await import("../../packages/agent_runtime/agent_runtime.js");
+      const localRuntime = new agent_runtime();
+      const res = await localRuntime.chat(prompt, session_id);
+      return { content: res.content };
+    }
+    throw err;
+  }
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
+
+function translateError(e: any): string {
+  const msg = String(e.message || e);
+  if (msg.includes("ECONNREFUSED") || msg.includes("connect ECONNREFUSED")) {
+    return `Oh no, macha! 😟 I couldn't connect to the backend server. Make sure it's running by starting it with 'npm start' or 'npm run dev'.`;
+  }
+  if (msg.includes("model_not_found")) {
+    return `Bro! 🤯 I couldn't find that AI model. Check if it's listed under '/models' or registered in models.json.`;
+  }
+  if (msg.includes("model_registry_not_found")) {
+    return `Macha, models.json registry file is missing! 😭 Run 'tu2pu doctor' to verify your workspace paths.`;
+  }
+  if (msg.includes("API request failed") || msg.includes("API error") || msg.includes("→ 500") || msg.includes("→ 401")) {
+    if (msg.includes("401")) {
+      return `Aiyo, unauthorized, da! 🔑 An API key is required but was invalid or missing.`;
+    }
+    return `Oh no, da! 😭 The API request failed. The server might be experiencing issues.`;
+  }
+  if (msg.includes("fetch failed") || msg.includes("network error")) {
+    return `Aiyo, network issue, da! 🌐 Either the server is offline or the connection timed out.`;
+  }
+  return `Prachana, macha! 🔧 Something went wrong: ${msg}.`;
+}
 
 async function api<T>(
   method: string,
   path: string,
   body?: unknown
 ): Promise<T> {
-  const res = await fetch(`${SERVER}${path}`, {
-    method,
-    headers: { "Content-Type": "application/json" },
-    body: body ? JSON.stringify(body) : undefined
-  });
-  if (!res.ok) {
-    const text = await res.text();
-    throw new Error(`API ${method} ${path} → ${res.status}: ${text}`);
+  try {
+    const res = await fetch(`${SERVER}${path}`, {
+      method,
+      headers: { "Content-Type": "application/json" },
+      body: body ? JSON.stringify(body) : undefined
+    });
+    if (!res.ok) {
+      const text = await res.text();
+      throw new Error(`API request failed → ${res.status}: ${text}`);
+    }
+    return await res.json() as T;
+  } catch (err: any) {
+    throw new Error(translateError(err));
   }
-  return res.json() as T;
 }
 
 function banner() {
-  console.log(chalk.bold.magenta("  █████╗  ██████╗  █████╗ ████████╗██╗  ██╗██╗"));
-  console.log(chalk.bold.magenta("  ██╔══██╗██╔════╝ ██╔══██╗╚══██╔══╝██║  ██║██║"));
-  console.log(chalk.bold.cyan("  ███████║██║  ███╗███████║   ██║   ███████║██║"));
-  console.log(chalk.bold.cyan("  ██╔══██║██║   ██║██╔══██║   ██║   ██╔══██║██║"));
-  console.log(chalk.bold.cyan("  ██║  ██║╚██████╔╝██║  ██║   ██║   ██║  ██║██║"));
-  console.log(chalk.bold.cyan("  ╚═╝  ╚═╝ ╚═════╝ ╚═╝  ╚═╝   ╚═╝   ╚═╝  ╚═╝╚═╝"));
+  console.log(chalk.bold.magenta("  ████████╗██╗   ██╗██████╗ ██████╗ ██╗   ██╗"));
+  console.log(chalk.bold.magenta("  ╚══██╔══╝██║   ██║╚════██╗██╔══██╗██║   ██║"));
+  console.log(chalk.bold.cyan("     ██║   ██║   ██║ █████╔╝██████╔╝██║   ██║"));
+  console.log(chalk.bold.cyan("     ██║   ██║   ██║██╔═══╝ ██╔═══╝ ██║   ██║"));
+  console.log(chalk.bold.cyan("     ██║   ╚██████╔╝███████╗██║     ╚██████╔╝"));
+  console.log(chalk.bold.cyan("     ╚═╝    ╚═════╝ ╚══════╝╚═╝      ╚═════╝ "));
   console.log();
   console.log(chalk.gray("  AI-powered development platform v1.0.0"));
   console.log();
@@ -143,15 +194,15 @@ function printMarkdown(text: string) {
 
 // ─── Commands ─────────────────────────────────────────────────────────────────
 
-// agathi version
+// tu2pu version
 program
   .command("version")
-  .description("Show agathi version")
+  .description("Show tu2pu version")
   .action(() => {
-    console.log(chalk.bold.cyan("agathi") + chalk.gray(" v1.0.0"));
+    console.log(chalk.bold.cyan("tu2pu") + chalk.gray(" v1.0.0"));
   });
 
-// agathi doctor
+// tu2pu doctor
 program
   .command("doctor")
   .description("Check system status and connectivity")
@@ -172,7 +223,7 @@ program
     console.log(chalk.green("  ✔ prompt_planner loaded"));
   });
 
-// agathi chat
+// tu2pu chat
 program
   .command("chat [message]")
   .description("Chat with the AI agent")
@@ -229,7 +280,7 @@ program
       }
       if (trimmed === "/history") {
         const s = sessions.list_sessions();
-        s.forEach(ss => console.log(chalk.gray(`  ${ss.id} — ${new Date(ss.created_at).toLocaleString()}`)));
+        s.forEach(ss => console.log(chalk.gray(`  ${ss.id} — ${new Date(ss.startedAt).toLocaleString()}`)));
         continue;
       }
 
@@ -258,7 +309,7 @@ program
     rl.close();
   });
 
-// agathi plan
+// tu2pu plan
 program
   .command("plan <prompt>")
   .description("Generate an execution plan from a prompt")
@@ -283,7 +334,7 @@ program
     }
   });
 
-// agathi run
+// tu2pu run
 program
   .command("run <planId>")
   .description("Execute a plan by ID")
@@ -315,7 +366,7 @@ program
     }
   });
 
-// agathi build
+// tu2pu build
 program
   .command("build [path]")
   .description("Build a project")
@@ -334,7 +385,7 @@ program
     }
   });
 
-// agathi generate
+// tu2pu generate
 program
   .command("generate <prompt>")
   .description("Generate a website or project from a prompt")
@@ -353,13 +404,13 @@ program
       console.log(chalk.bold("Files generated:"));
       data.files?.forEach((f: any) => console.log(chalk.gray("  📄 " + f.path)));
       console.log();
-      console.log(chalk.gray("Use ") + chalk.cyan(`agathi preview ${data.id}`) + chalk.gray(" to launch preview."));
+      console.log(chalk.gray("Use ") + chalk.cyan(`tu2pu preview ${data.id}`) + chalk.gray(" to launch preview."));
     } catch (e: any) {
       spinner.fail(chalk.red(e.message));
     }
   });
 
-// agathi preview
+// tu2pu preview
 program
   .command("preview <generatorId>")
   .description("Launch a preview for a generated project")
@@ -376,7 +427,7 @@ program
     }
   });
 
-// agathi deploy
+// tu2pu deploy
 program
   .command("deploy <generatorId>")
   .description("Deploy a generated project")
@@ -402,7 +453,7 @@ program
     }
   });
 
-// agathi models
+// tu2pu models
 program
   .command("models")
   .description("List available models")
@@ -423,7 +474,7 @@ program
     }
   });
 
-// agathi providers
+// tu2pu providers
 program
   .command("providers")
   .description("List configured providers")
@@ -446,7 +497,7 @@ program
     }
   });
 
-// agathi sessions
+// tu2pu sessions
 program
   .command("sessions")
   .description("List all chat sessions")
@@ -460,12 +511,12 @@ program
     list.forEach(s => {
       console.log(
         chalk.gray("  •") + " " + chalk.white(s.id) +
-        chalk.gray("  created: " + new Date(s.created_at).toLocaleString())
+        chalk.gray("  created: " + new Date(s.startedAt).toLocaleString())
       );
     });
   });
 
-// agathi artifacts
+// tu2pu artifacts
 program
   .command("artifacts <executionId>")
   .description("List artifacts from an execution")
@@ -487,7 +538,7 @@ program
     }
   });
 
-// agathi projects
+// tu2pu projects
 program
   .command("projects")
   .description("List workspace projects")
@@ -498,7 +549,7 @@ program
     console.log(chalk.gray("  Current workspace: ") + chalk.white(cwd));
   });
 
-// agathi config
+// tu2pu config
 program
   .command("config [key] [value]")
   .description("Get or set configuration values")
@@ -527,7 +578,7 @@ program
     }
   });
 
-// agathi tools
+// tu2pu tools
 program
   .command("tools")
   .description("List available tools in the registry")
@@ -548,7 +599,7 @@ program
     }
   });
 
-// agathi interactive / agathi i
+// tu2pu interactive / tu2pu i
 program
   .command("interactive")
   .alias("i")
@@ -559,11 +610,201 @@ program
     await launch_interactive({ session: opts.session, stream: opts.stream });
   });
 
+// tu2pu convert
+program
+  .command("convert <inputPathOrString>")
+  .description("Convert Tamil DSL to CIP, CIP to AIR, or AIR to target LLM prompts")
+  .option("-f, --from <format>", "Source format: tamil | cip | air", "tamil")
+  .option("-t, --to <format>", "Target format: cip | air | claude | qwen | gpt", "cip")
+  .option("-o, --output <path>", "Output file path (prints to stdout if omitted)")
+  .action(async (input, opts) => {
+    let rawContent = input;
+    if (fs.existsSync(input)) {
+      rawContent = fs.readFileSync(input, "utf-8");
+    }
+
+    const fromFormat = opts.from.toLowerCase();
+    const toFormat = opts.to.toLowerCase();
+
+    const spinner = ora("Processing conversion...").start();
+
+    try {
+      let result: any;
+      let title = "";
+
+      if (fromFormat === "tamil") {
+        const cip = Transcoder.transcodeTamilToCIP(rawContent);
+        if (toFormat === "cip") {
+          result = cip;
+          title = "Compressed Intelligence Package (CIP)";
+        } else if (toFormat === "air") {
+          result = Transcoder.compileCIPToAIR(cip);
+          title = "AI Intermediate Representation (AIR)";
+        } else if (["claude", "qwen", "gpt"].includes(toFormat)) {
+          const air = Transcoder.compileCIPToAIR(cip);
+          result = Transcoder.promptCompileAIR(air, toFormat);
+          title = `${toFormat.toUpperCase()} Instruction Prompt`;
+        } else {
+          throw new Error(`Unsupported target format: ${toFormat}`);
+        }
+      } else if (fromFormat === "cip") {
+        const repaired = Transcoder.jsonRepair(rawContent);
+        const cip = JSON.parse(repaired);
+        if (toFormat === "air") {
+          result = Transcoder.compileCIPToAIR(cip);
+          title = "AI Intermediate Representation (AIR)";
+        } else if (["claude", "qwen", "gpt"].includes(toFormat)) {
+          const air = Transcoder.compileCIPToAIR(cip);
+          result = Transcoder.promptCompileAIR(air, toFormat);
+          title = `${toFormat.toUpperCase()} Instruction Prompt`;
+        } else {
+          throw new Error(`Unsupported target format: ${toFormat}`);
+        }
+      } else if (fromFormat === "air") {
+        const repaired = Transcoder.jsonRepair(rawContent);
+        const air = JSON.parse(repaired);
+        if (["claude", "qwen", "gpt"].includes(toFormat)) {
+          result = Transcoder.promptCompileAIR(air, toFormat);
+          title = `${toFormat.toUpperCase()} Instruction Prompt`;
+        } else {
+          throw new Error(`Unsupported target format: ${toFormat}`);
+        }
+      } else {
+        throw new Error(`Unsupported source format: ${fromFormat}`);
+      }
+
+      spinner.succeed(chalk.green("Conversion complete!"));
+      console.log();
+
+      const outputStr = typeof result === "string" ? result : JSON.stringify(result, null, 2);
+
+      if (opts.output) {
+        fs.writeFileSync(opts.output, outputStr, "utf-8");
+        console.log(chalk.gray(`Output written to `) + chalk.cyan(opts.output));
+      } else {
+        // Beautiful print to stdout
+        console.log(chalk.bold.magenta("┌────────────────────────────────────────────────────────┐"));
+        console.log(chalk.bold.magenta(`│ tu2pu Operating Layer: ${title.padEnd(31)} │`));
+        console.log(chalk.bold.magenta("└────────────────────────────────────────────────────────┘"));
+        console.log();
+
+        if (toFormat === "cip" && typeof result !== "string") {
+          console.log(chalk.bold.cyan("--- Metadata ---"));
+          console.log(chalk.gray("  Compression Ratio: ") + chalk.bold.green(result.metadata.compression_ratio));
+          console.log(chalk.gray("  Compressed Size:   ") + chalk.bold.yellow(`${result.metadata.compressed_tokens.toLocaleString()} tokens`));
+          console.log(chalk.gray("  Actual Input:      ") + chalk.white(`${result.metadata.actual_tokens} tokens`));
+          console.log(chalk.gray("  Recognized Terms:  ") + chalk.white(result.metadata.dsl_terms.join(", ")));
+          console.log();
+          console.log(chalk.bold.cyan("--- Intent Goals ---"));
+          result.intent.goals.forEach((g: string) => console.log(chalk.gray("  • ") + chalk.white(g)));
+          console.log();
+          console.log(chalk.bold.cyan("--- Constraints ---"));
+          result.intent.constraints.forEach((c: string) => console.log(chalk.gray("  • ") + chalk.yellow(c)));
+          console.log();
+          console.log(chalk.bold.cyan("--- Context Required ---"));
+          result.intent.context_required.forEach((ctx: string) => console.log(chalk.gray("  • ") + chalk.cyan(ctx)));
+        } else if (toFormat === "air" && typeof result !== "string") {
+          console.log(chalk.bold.cyan("--- Roadmap Steps (AIR) ---"));
+          result.plan.steps.forEach((step: any) => {
+            console.log(chalk.bold.yellow(`  ${step.id.toUpperCase()}: ${step.name}`));
+            console.log(chalk.gray(`    Action: `) + chalk.green(step.action));
+            console.log(chalk.gray(`    Params: `) + chalk.white(JSON.stringify(step.params)));
+            console.log();
+          });
+        } else {
+          console.log(chalk.cyan(outputStr));
+        }
+        console.log();
+      }
+    } catch (e: any) {
+      spinner.fail(chalk.red(`Conversion failed: ${e.message}`));
+    }
+  });
+
+// tu2pu architecture / tu2pu arch
+program
+  .command("architecture")
+  .alias("arch")
+  .description("Show the Master Architecture Tree, layers, mind map, and timeline from og.docx")
+  .action(() => {
+    console.log(chalk.bold.magenta("┌────────────────────────────────────────────────────────┐"));
+    console.log(chalk.bold.magenta("│   துடுப்பு Engine: Master Architecture Blueprint       │"));
+    console.log(chalk.bold.magenta("└────────────────────────────────────────────────────────┘"));
+    console.log();
+
+    console.log(chalk.bold.cyan("1. Master Architecture Tree"));
+    console.log(chalk.yellow(`
+                     துடுப்பு
+             (Created by Ilaiyar)
+                     │
+ ┌───────────────────┼───────────────────┐
+ │                   │                   │
+Context OS     Deep Rethinker     Evidence Engine
+ │                   │                   │
+ ├─ Session          ├─ Planner          ├─ Logs
+ ├─ Workspace        ├─ Reasoner         ├─ Screenshots
+ ├─ Memory           ├─ Strategy         ├─ Verification
+ └─ Runtime          └─ Decisions        └─ Reports
+                     │
+               Execution Engine
+                     │
+     ┌───────────────┼───────────────┐
+     │               │               │
+ Tool Router    Prompt Builder   Model Provider
+                     │
+           Local Models / Cloud Models
+    `));
+
+    console.log(chalk.bold.cyan("2. Layer Diagram"));
+    console.log(chalk.white(`
+  User ──> துடுப்பு CLI ──> Context OS ──> Deep Rethinker ──> Evidence Engine ──> Execution Engine ──> Tool Router ──> AI Models
+    `));
+
+    console.log(chalk.bold.cyan("3. Context OS Internal Structure"));
+    console.log(chalk.green(`
+  Context OS
+  ├── Session Context
+  ├── Workspace Context
+  ├── Runtime Context
+  ├── Memory Context
+  ├── Build Context
+  ├── Git Context
+  ├── Tool Context
+  ├── Evidence Context
+  └── State Machine
+    `));
+
+    console.log(chalk.bold.cyan("4. Mind Map"));
+    console.log(chalk.gray(`
+  துடுப்பு
+   ├── Runtime
+   ├── Context OS (Session, Workspace, Memory, State)
+   ├── Thinking (Planner, Reasoner, Decisions)
+   ├── Execution (Tools, Browser, Files, APIs)
+   └── Evidence (Logs, Verification, Reports, History)
+    `));
+
+    console.log(chalk.bold.cyan("5. Project Evolution Timeline"));
+    console.log(chalk.cyan(`
+  Stage 1: Runtime Core ──> Stage 2: Memory Engine ──> Stage 3: Context OS ──> Stage 4: Deep Rethinker ──> Stage 5: Evidence Engine ──> Stage 6: Universal Execution Layer
+    `));
+
+    console.log(chalk.bold.cyan("6. Business Ecosystem"));
+    console.log(chalk.magenta(`
+  Ilaiyar
+   ├── துடுப்பு (Developer Tooling)
+   ├── Dirty2Clean AI
+   ├── School Assistant
+   └── ERP Assistant
+    `));
+    console.log();
+  });
+
 register_project_commands(program);
 register_builder_commands(program);
 register_deploy_commands(program);
 
-// agathi help override
+// tu2pu help override
 program
   .command("help")
   .description("Show help and all available commands")
@@ -572,23 +813,23 @@ program
     program.outputHelp();
   });
 
-// agathi update
+// tu2pu update
 program
   .command("update")
   .description("Check for updates")
   .action(() => {
     const spinner = ora("Checking for updates...").start();
     setTimeout(() => {
-      spinner.succeed(chalk.green("agathi v1.0.0 — already up to date."));
+      spinner.succeed(chalk.green("tu2pu v1.0.0 — already up to date."));
     }, 600);
   });
 
 // ─── Main ─────────────────────────────────────────────────────────────────────
 
 program
-  .name("agathi")
+  .name("tu2pu")
   .version("1.0.0")
-  .description(chalk.bold.magenta("agathi") + " — AI-powered development platform")
+  .description(chalk.bold.magenta("tu2pu") + " — AI-powered development platform")
   .hook("preAction", () => {
     // graceful ctrl-c handling
     process.on("SIGINT", () => {

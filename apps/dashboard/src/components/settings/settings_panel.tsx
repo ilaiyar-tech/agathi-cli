@@ -1,6 +1,7 @@
+import { useState } from "react";
 import {use_dashboard} from "../../hooks/use_dashboard";
 import {useQuery, useMutation, useQueryClient} from "@tanstack/react-query";
-import {getSettings, updateSettings} from "../../services/api";
+import {getSettings, updateSettings, getWhatsappStatus, linkWhatsapp, unlinkWhatsapp, testWhatsapp} from "../../services/api";
 
 export function settings_panel(){
 
@@ -23,6 +24,43 @@ const updateSettingsMutation = useMutation({
     qc.invalidateQueries({queryKey: ["settings"]});
   }
 });
+
+const { data: whatsappStatus, refetch: refetchWhatsapp } = useQuery({
+  queryKey: ["whatsapp-status"],
+  queryFn: () => getWhatsappStatus().then(r => r.data),
+  refetchInterval: (query) => {
+    return query.state.data?.status === "Connecting" ? 1000 : false;
+  }
+});
+
+const [qrCode, setQrCode] = useState<string | null>(null);
+
+const startLinkingMutation = useMutation({
+  mutationFn: () => linkWhatsapp(),
+  onSuccess: (res) => {
+    setQrCode(res.data.qrCode);
+    refetchWhatsapp();
+  }
+});
+
+const unlinkMutation = useMutation({
+  mutationFn: () => unlinkWhatsapp(),
+  onSuccess: () => {
+    setQrCode(null);
+    refetchWhatsapp();
+  }
+});
+
+const testMutation = useMutation({
+  mutationFn: () => testWhatsapp(),
+  onSuccess: () => {
+    alert("Test alert sent to WhatsApp! Check console/terminal logs.");
+  }
+});
+
+function cancelLinking() {
+  unlinkMutation.mutate();
+}
 
 const apiUrl = import.meta.env.VITE_API_URL || "http://127.0.0.1:8100";
 
@@ -143,6 +181,82 @@ VRAM
 
 </div>
 
+</div>
+
+<div className="rounded-3xl border border-white/5 bg-white/[0.03] p-6">
+  <div className="mb-6 flex items-center justify-between">
+    <div>
+      <div className="text-xl font-semibold">WhatsApp Integration</div>
+      <div className="text-xs text-gray-400 mt-1">Receive admin alerts and notify task status on default Admin Number</div>
+    </div>
+    <div className="text-xs px-2.5 py-0.5 rounded-full bg-violet-600/20 text-violet-300">
+      {whatsappStatus?.status || "Disconnected"}
+    </div>
+  </div>
+
+  <div className="space-y-4">
+    <div className="flex justify-between items-center bg-black/20 p-4 rounded-2xl border border-white/5">
+      <div>
+        <div className="font-semibold text-white">Admin Number</div>
+        <div className="text-xs text-gray-400 mt-0.5">WHATSAPP_ADMIN_NUMBER configuration value</div>
+      </div>
+      <div className="font-mono text-sm text-gray-300">
+        {whatsappStatus?.adminNumber || "+91 96989 21693"}
+      </div>
+    </div>
+
+    {whatsappStatus?.status === "Disconnected" ? (
+      <div className="space-y-4">
+        {qrCode ? (
+          <div className="flex flex-col items-center gap-3 p-4 bg-black/40 rounded-2xl border border-white/5">
+            <div className="text-sm font-medium text-gray-300">Scan QR Code with WhatsApp</div>
+            <img src={qrCode} alt="WhatsApp Login QR" className="w-48 h-48 bg-white p-2 rounded-xl" />
+            <button 
+              onClick={cancelLinking}
+              className="text-xs text-red-400 hover:text-red-300 transition underline"
+            >
+              Cancel Link
+            </button>
+          </div>
+        ) : (
+          <button 
+            onClick={() => startLinkingMutation.mutate()}
+            className="w-full py-3 bg-violet-600 hover:bg-violet-500 rounded-2xl font-semibold text-white transition"
+          >
+            Link WhatsApp
+          </button>
+        )}
+      </div>
+    ) : whatsappStatus?.status === "Connecting" ? (
+      <div className="flex flex-col items-center gap-3 p-4 bg-black/40 rounded-2xl border border-white/5">
+        <div className="text-sm font-medium text-gray-300">Connecting... Please scan the QR code.</div>
+        {qrCode && <img src={qrCode} alt="WhatsApp Login QR" className="w-48 h-48 bg-white p-2 rounded-xl" />}
+        <button 
+          onClick={cancelLinking}
+          className="text-xs text-red-400 hover:text-red-300 transition underline"
+        >
+          Cancel Link
+        </button>
+      </div>
+    ) : (
+      <div className="space-y-3">
+        <div className="flex gap-3">
+          <button 
+            onClick={() => testMutation.mutate()}
+            className="flex-1 py-3 bg-white/5 hover:bg-white/10 rounded-2xl font-semibold border border-white/10 transition"
+          >
+            Send Test Notification
+          </button>
+          <button 
+            onClick={() => unlinkMutation.mutate()}
+            className="flex-1 py-3 bg-red-600/20 hover:bg-red-600/30 text-red-400 rounded-2xl font-semibold border border-red-500/20 transition"
+          >
+            Unlink WhatsApp
+          </button>
+        </div>
+      </div>
+    )}
+  </div>
 </div>
 
 <div className="rounded-3xl border border-white/5 bg-white/[0.03] p-6">

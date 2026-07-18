@@ -18,7 +18,7 @@ export { get_active_model, set_active_model };
 export async function chat(messages:any[]) {
   const active = get_active_model();
   const candidates:provider[]=active in config
-    ?[{url:"http://127.0.0.1:8012",name:"llama.cpp",type:"llama.cpp"}]
+    ?[{url:"https://api.tu2pu.in",name:"llama.cpp",type:"llama.cpp"}]
     :provider_catalog.filter(provider=>provider.name===active).concat(provider_catalog.filter(provider=>provider.name!==active));
 
   let failure:unknown;

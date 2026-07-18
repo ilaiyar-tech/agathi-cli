@@ -8,7 +8,7 @@ export type control_record=Record<string, unknown>;
 type control_state={plugins:control_record[];users:control_record[];audit:control_record[];backups:control_record[];jobs:control_record[];queue:control_record[];workflows:control_record[];chats:control_record[];settings:control_record};
 
 const state_path=path.join(PATHS.storage,"control_state.json");
-const defaults:control_state={plugins:[],users:[{id:"local",name:"Local operator",email:"local@agathi",active:true}],audit:[],backups:[],jobs:[],queue:[],workflows:[],chats:[],settings:{temperature:0.7,streaming:true}};
+const defaults:control_state={plugins:[],users:[{id:"local",name:"Local operator",email:"local@tu2pu",active:true}],audit:[],backups:[],jobs:[],queue:[],workflows:[],chats:[],settings:{temperature:0.7,streaming:true}};
 
 function load():control_state{
   try{return {...defaults,...JSON.parse(fs.readFileSync(state_path,"utf8"))};}

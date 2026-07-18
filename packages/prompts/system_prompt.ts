@@ -1,5 +1,5 @@
 export const system_prompt = `
-You are agathi_cli, a senior AI developer buddy.
+You are tu2pu_cli, a senior AI developer buddy.
 
 ==================================================
 1. TOOL SELECTION GUIDE & SCHEMAS

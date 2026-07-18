@@ -15,9 +15,9 @@ import { projects } from "../../../packages/project_manager/index.js";
  * or the server running. Keeps a small local history log so `history`,
  * `status`, and `rollback` have something to work with offline.
  *
- * Note: this is distinct from the top-level `agathi deploy <generatorId>`
+ * Note: this is distinct from the top-level `tu2pu deploy <generatorId>`
  * command, which deploys artifacts produced by the AI Builder pipeline via
- * the server API. This group (`agathi deployment ...`) deploys any local
+ * the server API. This group (`tu2pu deployment ...`) deploys any local
  * project directly.
  */
 
@@ -68,7 +68,7 @@ export function register_deploy_commands(program: Command) {
     .alias("deploy-local")
     .description("Deploy local projects directly and manage deployment history");
 
-  // agathi deployment run [path]
+  // tu2pu deployment run [path]
   group
     .command("run [path]")
     .description("Deploy a local project directly (defaults to active project or cwd)")
@@ -107,7 +107,7 @@ export function register_deploy_commands(program: Command) {
       }
     });
 
-  // agathi deployment history
+  // tu2pu deployment history
   group
     .command("history")
     .description("Show recent local deployments")
@@ -131,7 +131,7 @@ export function register_deploy_commands(program: Command) {
       });
     });
 
-  // agathi deployment status <id>
+  // tu2pu deployment status <id>
   group
     .command("status <id>")
     .description("Show details for a specific local deployment")
@@ -152,7 +152,7 @@ export function register_deploy_commands(program: Command) {
       console.log(chalk.gray("  Deployed: ") + chalk.white(new Date(record.timestamp).toLocaleString()));
     });
 
-  // agathi deployment rollback <id>
+  // tu2pu deployment rollback <id>
   group
     .command("rollback <id>")
     .description("Redeploy an earlier local deployment's project path")

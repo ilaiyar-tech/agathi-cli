@@ -1,0 +1,12 @@
+{
+  "id": "mock_test",
+  "version": "1.0.0",
+  "runtime": ">=1.0.0",
+  "description": "Mock plugin for Stage 14 validation",
+  "permissions": {
+    "env": ["MOCK_API_KEY"]
+  },
+  "events": ["ZIP_CREATED"],
+  "actions": ["hello", "crash", "hang"],
+  "entry": "entry.js"
+}

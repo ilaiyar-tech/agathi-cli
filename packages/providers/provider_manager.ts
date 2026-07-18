@@ -22,6 +22,33 @@ export class provider_manager {
     if(!provider) throw new Error("vllm_provider_not_configured");
     return {content:await provider_completion(provider,[{role:"user",content:prompt}],model)};
   }
+
+  async ollama(
+    model: string,
+    prompt: string
+  ): Promise<provider_response> {
+    const provider=provider_catalog.find(value=>value.name==="ollama");
+    if(!provider) throw new Error("ollama_provider_not_configured");
+    return {content:await provider_completion(provider,[{role:"user",content:prompt}],model)};
+  }
+
+  async openai(
+    model: string,
+    prompt: string
+  ): Promise<provider_response> {
+    const provider=provider_catalog.find(value=>value.name==="openai");
+    if(!provider) throw new Error("openai_provider_not_configured");
+    return {content:await provider_completion(provider,[{role:"user",content:prompt}],model)};
+  }
+
+  async lmstudio(
+    model: string,
+    prompt: string
+  ): Promise<provider_response> {
+    const provider=provider_catalog.find(value=>value.name==="lmstudio");
+    if(!provider) throw new Error("lmstudio_provider_not_configured");
+    return {content:await provider_completion(provider,[{role:"user",content:prompt}],model)};
+  }
 }
 
 export const providers = new provider_manager();

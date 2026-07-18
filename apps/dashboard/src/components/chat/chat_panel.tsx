@@ -76,7 +76,7 @@ return(
 >
 
 <div className="border-b border-white/5 p-5 text-xl font-semibold flex justify-between items-center">
-  <span>Agathi Chat</span>
+  <span>tu2pu Chat</span>
   <div className="flex gap-2">
     <button onClick={() => createSession()} className="text-sm rounded-lg border border-white/5 px-3 py-1 hover:bg-white/5 transition">
       New Chat
@@ -204,7 +204,7 @@ message.role==="user"
           await submit();
         }
       }}
-      placeholder="Message Agathi AI..."
+      placeholder="Message tu2pu AI..."
       className="h-36 w-full resize-none rounded-3xl border border-white/5 bg-black/20 p-5 pl-12 pr-5 outline-none"
     />
     

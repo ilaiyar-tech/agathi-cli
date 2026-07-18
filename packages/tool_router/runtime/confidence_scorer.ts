@@ -1,3 +1,5 @@
+import { getModelEndpoint } from "../../router/index.js";
+
 export interface ScoreResult {
   score: number;
   reason: string;
@@ -9,7 +11,8 @@ export interface ScoreResult {
 export class ConfidenceScorer {
   public async scoreResult(userQuery: string, pageText: string): Promise<ScoreResult> {
     try {
-      const response = await fetch("http://127.0.0.1:8012/v1/chat/completions", {
+      const endpoint = await getModelEndpoint();
+      const response = await fetch(`${endpoint}/v1/chat/completions`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

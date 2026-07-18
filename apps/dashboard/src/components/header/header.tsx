@@ -20,7 +20,7 @@ className="flex min-h-[84px] flex-wrap items-center justify-between gap-4 border
 <div>
 
 <div className="text-2xl font-semibold">
-Agathi AI
+tu2pu AI
 </div>
 
 <div className="text-sm text-gray-400">

@@ -87,7 +87,7 @@ export function terminal_panel() {
       fit.fit();
 
       terminal.writeln("");
-      terminal.writeln("\x1b[1;35mAgathi AI Terminal Shell\x1b[0m");
+      terminal.writeln("\x1b[1;35mtu2pu AI Terminal Shell\x1b[0m");
       terminal.writeln("Real-time persistent process attached.");
       terminal.writeln("");
 

@@ -12,7 +12,7 @@ export async function agents_routes(app: FastifyInstance) {
     
     return agents.map(name => ({
       name,
-      description: `Agathi ${name} agent`,
+      description: `tu2pu ${name} agent`,
       running: true
     }));
   });

@@ -6,6 +6,7 @@ import {server_manager} from "../components/server/server_manager";
 import {services_panel} from "../components/services/services_panel";
 import {model_manager} from "../components/models/model_manager";
 import {model_downloads} from "../components/downloads/model_downloads";
+import {api_keys_panel} from "../components/admin/api_keys_panel";
 
 export function admin_page(){
 
@@ -15,7 +16,7 @@ return(
 
 {admin_panel()}
 
-{model_downloads()}
+{api_keys_panel()}
 
 {model_downloads()}
 

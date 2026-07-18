@@ -1,4 +1,4 @@
-# Verification Report for Module 42: agathi_cli
+# Verification Report for Module 42: tu2pu_cli
 
 ## Implementation Summary
 
@@ -10,7 +10,7 @@ Replaced the minimal `apps/cli/index.ts` stub with a production-ready CLI built 
 
 - CLI is a **pure client** — all business logic stays in the backend engine packages.
 - No duplicate logic. All commands call verified API endpoints at `http://localhost:8100` or import packages directly where appropriate (session_manager, agent_runtime for local REPL).
-- Binary entry point wired in `package.json` under `"bin": { "agathi": "./dist/apps/cli/index.js" }`.
+- Binary entry point wired in `package.json` under `"bin": { "tu2pu": "./dist/apps/cli/index.js", "agathi": "./dist/apps/cli/agathi.js" }`.
 - New script: `npm run cli:dist` for running the compiled binary.
 
 ---
@@ -19,31 +19,31 @@ Replaced the minimal `apps/cli/index.ts` stub with a production-ready CLI built 
 
 | Command | Mode | Integration |
 |---|---|---|
-| `agathi version` | Non-interactive | Local |
-| `agathi doctor` | Non-interactive | server + session_manager |
-| `agathi chat [message]` | **Interactive REPL** + non-interactive | agent_runtime, streaming_engine |
-| `agathi chat --stream` | Non-interactive streaming | runtime.chat_stream |
-| `agathi plan <prompt>` | Non-interactive | POST /planner/plan |
-| `agathi run <planId>` | Non-interactive with polling | POST /execution/start, GET /execution/:id/status |
-| `agathi build [path]` | Non-interactive | POST /execution/start |
-| `agathi generate <prompt>` | Non-interactive | POST /generator/start |
-| `agathi preview <genId>` | Non-interactive | POST /preview/start |
-| `agathi deploy <genId>` | Non-interactive | POST /deploy/start |
-| `agathi models` | Non-interactive | GET /models |
-| `agathi providers` | Non-interactive | GET /provider/list |
-| `agathi sessions` | Non-interactive | session_manager.list_sessions() |
-| `agathi artifacts <execId>` | Non-interactive | GET /execution/:id/artifacts |
-| `agathi projects` | Non-interactive | Local workspace scan |
-| `agathi config [key] [value]` | Non-interactive | GET /settings/all |
-| `agathi tools` | Non-interactive | GET /tools/categories |
-| `agathi update` | Non-interactive | Local |
-| `agathi help` | Non-interactive | Commander help |
+| `tu2pu version` | Non-interactive | Local |
+| `tu2pu doctor` | Non-interactive | server + session_manager |
+| `tu2pu chat [message]` | **Interactive REPL** + non-interactive | agent_runtime, streaming_engine |
+| `tu2pu chat --stream` | Non-interactive streaming | runtime.chat_stream |
+| `tu2pu plan <prompt>` | Non-interactive | POST /planner/plan |
+| `tu2pu run <planId>` | Non-interactive with polling | POST /execution/start, GET /execution/:id/status |
+| `tu2pu build [path]` | Non-interactive | POST /execution/start |
+| `tu2pu generate <prompt>` | Non-interactive | POST /generator/start |
+| `tu2pu preview <genId>` | Non-interactive | POST /preview/start |
+| `tu2pu deploy <genId>` | Non-interactive | POST /deploy/start |
+| `tu2pu models` | Non-interactive | GET /models |
+| `tu2pu providers` | Non-interactive | GET /provider/list |
+| `tu2pu sessions` | Non-interactive | session_manager.list_sessions() |
+| `tu2pu artifacts <execId>` | Non-interactive | GET /execution/:id/artifacts |
+| `tu2pu projects` | Non-interactive | Local workspace scan |
+| `tu2pu config [key] [value]` | Non-interactive | GET /settings/all |
+| `tu2pu tools` | Non-interactive | GET /tools/categories |
+| `tu2pu update` | Non-interactive | Local |
+| `tu2pu help` | Non-interactive | Commander help |
 
 ---
 
 ## CLI Features Implemented
 
-- ✅ Natural language command execution via `agathi chat`
+- ✅ Natural language command execution via `tu2pu chat`
 - ✅ Interactive REPL mode with `/help`, `/session`, `/history` sub-commands
 - ✅ Non-interactive single-shot mode for all commands
 - ✅ Token-by-token streaming output (`--stream` flag)
@@ -64,7 +64,7 @@ Replaced the minimal `apps/cli/index.ts` stub with a production-ready CLI built 
 ## Verification Checklist
 
 - [x] `npm run build` — zero TypeScript errors, clean exit
-- [x] `node dist/apps/cli/index.js version` → `agathi v1.0.0`
+- [x] `node dist/apps/cli/index.js version` → `tu2pu v1.0.0`
 - [x] `node dist/apps/cli/index.js --help` → full command listing verified
 - [x] `node dist/apps/cli/index.js sessions` → session listing works
 - [x] `node dist/apps/cli/index.js projects` → workspace detection works
@@ -72,4 +72,4 @@ Replaced the minimal `apps/cli/index.ts` stub with a production-ready CLI built 
 - [x] Binary entry wired in package.json
 - [x] Integrated with: agent_runtime, session_manager, prompt_planner, execution_engine, tool_calling, website_generator, preview_engine, deployment_pipeline
 
-Module 42 `agathi_cli` is fully implemented, runtime verified, and the build passes.
+Module 42 `tu2pu_cli` is fully implemented, runtime verified, and the build passes.

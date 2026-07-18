@@ -18,7 +18,7 @@ export function register_project_commands(program: Command) {
     .alias("proj")
     .description("Manage the active project workspace");
 
-  // agathi project init [path]
+  // tu2pu project init [path]
   project
     .command("init [path]")
     .description("Initialize (or attach to) a project at the given path")
@@ -33,21 +33,21 @@ export function register_project_commands(program: Command) {
         if (await gm.is_repo()) {
           console.log(chalk.gray("  Git: ") + chalk.green("repository detected"));
         } else {
-          console.log(chalk.gray("  Git: ") + chalk.yellow("no repository (run 'agathi project git-init' to create one)"));
+          console.log(chalk.gray("  Git: ") + chalk.yellow("no repository (run 'tu2pu project git-init' to create one)"));
         }
       } catch (e: any) {
         spinner.fail(chalk.red(e.message));
       }
     });
 
-  // agathi project info
+  // tu2pu project info
   project
     .command("info")
     .description("Show the currently active project")
     .action(() => {
       const active = projects.getActiveProject();
       if (!active) {
-        console.log(chalk.yellow("No active project. Run 'agathi project init [path]' first."));
+        console.log(chalk.yellow("No active project. Run 'tu2pu project init [path]' first."));
         return;
       }
       console.log(chalk.bold.cyan("Active Project"));
@@ -55,7 +55,7 @@ export function register_project_commands(program: Command) {
       console.log(chalk.gray("  Root: ") + chalk.white(active.rootPath));
     });
 
-  // agathi project files
+  // tu2pu project files
   project
     .command("files")
     .description("List all files tracked in the active project")
@@ -63,7 +63,7 @@ export function register_project_commands(program: Command) {
     .action(async (opts) => {
       const active = projects.getActiveProject();
       if (!active) {
-        console.log(chalk.yellow("No active project. Run 'agathi project init [path]' first."));
+        console.log(chalk.yellow("No active project. Run 'tu2pu project init [path]' first."));
         return;
       }
       const spinner = ora("Scanning project files...").start();
@@ -82,14 +82,14 @@ export function register_project_commands(program: Command) {
       }
     });
 
-  // agathi project status
+  // tu2pu project status
   project
     .command("status")
     .description("Show active project + git status")
     .action(async () => {
       const active = projects.getActiveProject();
       if (!active) {
-        console.log(chalk.yellow("No active project. Run 'agathi project init [path]' first."));
+        console.log(chalk.yellow("No active project. Run 'tu2pu project init [path]' first."));
         return;
       }
       console.log(chalk.bold.cyan("Project: ") + chalk.white(active.name));
@@ -111,14 +111,14 @@ export function register_project_commands(program: Command) {
       }
     });
 
-  // agathi project git-init
+  // tu2pu project git-init
   project
     .command("git-init")
     .description("Initialize a git repository in the active project")
     .action(async () => {
       const active = projects.getActiveProject();
       if (!active) {
-        console.log(chalk.yellow("No active project. Run 'agathi project init [path]' first."));
+        console.log(chalk.yellow("No active project. Run 'tu2pu project init [path]' first."));
         return;
       }
       const spinner = ora("Initializing git repository...").start();
@@ -135,7 +135,7 @@ export function register_project_commands(program: Command) {
       }
     });
 
-  // agathi project log
+  // tu2pu project log
   project
     .command("log")
     .description("Show recent commit log for the active project")
@@ -143,7 +143,7 @@ export function register_project_commands(program: Command) {
     .action(async (opts) => {
       const active = projects.getActiveProject();
       if (!active) {
-        console.log(chalk.yellow("No active project. Run 'agathi project init [path]' first."));
+        console.log(chalk.yellow("No active project. Run 'tu2pu project init [path]' first."));
         return;
       }
       const spinner = ora("Fetching commit log...").start();

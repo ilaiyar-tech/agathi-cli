@@ -28,6 +28,7 @@ import { tools_routes } from "./routes/tools.js";
 import { generator_routes } from "./routes/generator.js";
 import { preview_routes } from "./routes/preview.js";
 import { deploy_routes } from "./routes/deploy.js";
+import { whatsapp_routes } from "./routes/whatsapp.js";
 
 const app = Fastify({
   requestTimeout: 0,
@@ -48,6 +49,7 @@ await control_routes(app);
 await chats_routes(app);
 await settings_routes(app);
 await knowledge_routes(app);
+await whatsapp_routes(app);
 await agents_routes(app);
 await builder_routes(app);
 await planner_routes(app);
@@ -74,7 +76,7 @@ app.get("/v1/models", async (request, reply) => {
       id: model_name,
       object: "model",
       created: Math.floor(Date.now() / 1000),
-      owned_by: "agathi_engine"
+      owned_by: "tu2pu_engine"
     }));
 
     return reply.status(200).send({
@@ -91,6 +93,22 @@ app.get("/v1/models", async (request, reply) => {
  * Interfaces standard third-party CLI input directly into the native runtime pipeline
  */
 app.post("/v1/chat/completions", async (request, reply) => {
+  // API Key validation (Cloud Gatekeeper)
+  try {
+    const keysCount = memory.database.prepare("SELECT count(*) as count FROM api_keys").get() as any;
+    if (keysCount && keysCount.count > 0) {
+      const authHeader = request.headers["authorization"];
+      if (!authHeader) {
+        return reply.status(401).send({ error: { message: "Authentication required. Please provide a Bearer token API key.", type: "invalid_request_error" } });
+      }
+      const key = authHeader.replace("Bearer ", "").trim();
+      const row = memory.database.prepare("SELECT key FROM api_keys WHERE key = ? AND status = 'active'").get(key) as any;
+      if (!row) {
+        return reply.status(401).send({ error: { message: "Invalid API key provided", type: "invalid_request_error" } });
+      }
+    }
+  } catch (dbErr) {}
+
   const body = request.body as {
     model: string;
     messages: Array<{ role: string; content: string }>;
@@ -188,7 +206,7 @@ app.post("/v1/embeddings", async (request, reply) => {
   }
 });
 
-// --- EXISTING AGATHI NATIVE ENDPOINTS ---
+// --- EXISTING TU2PU NATIVE ENDPOINTS ---
 
 app.post(
   "/chat",

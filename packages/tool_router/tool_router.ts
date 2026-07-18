@@ -1,4 +1,4 @@
-import { router as model_router } from "../router/index.js";
+import { router as model_router, postModelRequest } from "../router/index.js";
 import { registry } from "../tools/index.js";
 import { engine } from "../execution_engine/index.js";
 import axios from "axios";
@@ -41,8 +41,8 @@ export class tool_router {
         payload.tools = tools;
       }
 
-      const response = await axios.post(
-        "http://127.0.0.1:8012/v1/chat/completions",
+      const response = await postModelRequest(
+        "/v1/chat/completions",
         payload,
         { headers: { "Connection": "close" } }
       );
@@ -169,8 +169,8 @@ export class tool_router {
         payload.tools = tools;
       }
 
-      const response = await axios.post(
-        "http://127.0.0.1:8012/v1/chat/completions",
+      const response = await postModelRequest(
+        "/v1/chat/completions",
         payload,
         { 
           responseType: "stream",

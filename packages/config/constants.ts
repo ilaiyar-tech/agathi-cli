@@ -1,5 +1,5 @@
-export const APP_NAME = "Agathi CLI";
-export const APP_VERSION = "0.1.0";
+export const APP_NAME = "tu2pu";
+export const APP_VERSION = "1.0.0";
 
 export const DEFAULT_PORT = 8100;
 

@@ -9,6 +9,6 @@
     "resolveJsonModule": true,
     "outDir": "dist"
   },
-  "include": ["apps/server/**/*.ts", "apps/cli/**/*.ts", "packages/**/*.ts", "types/**/*.d.ts"],
+  "include": ["apps/server/**/*.ts", "apps/cli/**/*.ts", "apps/vscode-extension/**/*.ts", "packages/**/*.ts", "types/**/*.d.ts"],
   "exclude": ["apps/dashboard"]
 }

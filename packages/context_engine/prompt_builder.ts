@@ -87,7 +87,7 @@ export class Collector {
     }));
 
     return {
-      system: params.systemPrompts || ["You are Agathi AI coding assistant."],
+      system: params.systemPrompts || ["You are tu2pu AI coding assistant."],
       runtimePolicies: params.policies || ["Never bypass verification pipelines."],
       execution: [`Current state is: ${currentState}`, `User prompt: ${params.userPrompt}`],
       conversation,

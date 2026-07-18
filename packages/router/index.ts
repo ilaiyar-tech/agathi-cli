@@ -1,1 +1,2 @@
-export { router } from "./model_router.js";
+export * from "./model_router.js";
+

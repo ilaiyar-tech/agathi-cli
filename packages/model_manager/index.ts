@@ -9,7 +9,7 @@ const registry=fs.existsSync(registry_path)
   :{};
 
 const active_file =
-  "/tmp/agathi_active_model";
+  "/tmp/tu2pu_active_model";
 
 export function list_models() {
 

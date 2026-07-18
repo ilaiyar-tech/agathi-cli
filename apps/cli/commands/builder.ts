@@ -22,7 +22,7 @@ export function register_builder_commands(program: Command) {
     .command("builder")
     .description("Install dependencies and build projects locally");
 
-  // agathi builder install [path]
+  // tu2pu builder install [path]
   build_group
     .command("install [path]")
     .description("Install dependencies for a project (defaults to active project or cwd)")
@@ -46,7 +46,7 @@ export function register_builder_commands(program: Command) {
       }
     });
 
-  // agathi builder run [path]
+  // tu2pu builder run [path]
   build_group
     .command("run [path]")
     .description("Build a project (defaults to active project or cwd)")
@@ -70,7 +70,7 @@ export function register_builder_commands(program: Command) {
       }
     });
 
-  // agathi builder all [path]  — install then build in one shot
+  // tu2pu builder all [path]  — install then build in one shot
   build_group
     .command("all [path]")
     .description("Install dependencies and then build, in sequence")

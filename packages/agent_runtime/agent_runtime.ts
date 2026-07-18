@@ -1,10 +1,11 @@
 import crypto from "node:crypto";
 import { router } from "../router/index.js";
 import { tools_router } from "../tool_router/index.js";
-import { planner } from "../prompt_planner/index.js";
+import { planner, Message } from "../prompt_planner/index.js";
 import { system_prompt } from "../prompts/system_prompt.js";
 import { registry } from "../tools/index.js";
 import { ContextOS } from "../context_engine/index.js";
+import { WorkspaceChunk } from "../context/context_interfaces.js";
 
 export interface ExecutionProfile {
   intent: string;
@@ -162,10 +163,15 @@ export class agent_runtime {
       tokenBudget: 4000
     });
 
-    const historical_messages = promptCtx.conversation.map(m => ({
-      role: m.role,
-      content: m.content
-    }));
+    const historical_messages: Message[] = [];
+    for (const m of promptCtx.conversation) {
+      if (m.role === "system" || m.role === "user" || m.role === "assistant") {
+        historical_messages.push({
+          role: m.role,
+          content: m.content
+        });
+      }
+    }
 
     const profile = detectProfile(prompt);
     ContextOS.state.transition("Execution", "Triggering intent flow");
@@ -174,7 +180,7 @@ export class agent_runtime {
       const contextData = await runFileAnalysisPipeline(prompt, contextId);
       if (contextData) {
         const messages = [
-          { role: "system", content: "You are Agathi, an advanced workspace reasoning engine. You MUST provide structured source attribution in your response. Cite the specific file names and line ranges (e.g. Lines 42-118) for all code snippets, imports, or logic details you mention." },
+          { role: "system", content: "You are tu2pu, an advanced workspace reasoning engine. You MUST provide structured source attribution in your response. Cite the specific file names and line ranges (e.g. Lines 42-118) for all code snippets, imports, or logic details you mention." },
           ...historical_messages,
           { role: "user", content: `${contextData}\n\nUser query: ${prompt}` }
         ];
@@ -193,7 +199,7 @@ export class agent_runtime {
       userPrompt: prompt
     });
 
-    const session_context_str = session_context.workspace.map(w => `File: ${w.path}\n${w.content}`).join("\n");
+    const session_context_str = session_context.workspace.map((w: WorkspaceChunk) => `File: ${w.path}\n${w.content}`).join("\n");
 
     const messages = planner.plan({
       system_prompt,
@@ -234,10 +240,15 @@ export class agent_runtime {
       tokenBudget: 4000
     });
 
-    const historical_messages = promptCtx.conversation.map(m => ({
-      role: m.role,
-      content: m.content
-    }));
+    const historical_messages: Message[] = [];
+    for (const m of promptCtx.conversation) {
+      if (m.role === "system" || m.role === "user" || m.role === "assistant") {
+        historical_messages.push({
+          role: m.role,
+          content: m.content
+        });
+      }
+    }
 
     const profile = detectProfile(prompt);
     ContextOS.state.transition("Execution", "Triggering intent stream");
@@ -247,7 +258,7 @@ export class agent_runtime {
       if (contextData) {
         onToken(`🔍 Pre-executing file search pipeline...\nFound matching context. Formulating summary response...\n\n`);
         const messages = [
-          { role: "system", content: "You are Agathi, an advanced workspace reasoning engine. You MUST provide structured source attribution in your response. Cite the specific file names and line ranges (e.g. Lines 42-118) for all code snippets, imports, or logic details you mention." },
+          { role: "system", content: "You are tu2pu, an advanced workspace reasoning engine. You MUST provide structured source attribution in your response. Cite the specific file names and line ranges (e.g. Lines 42-118) for all code snippets, imports, or logic details you mention." },
           ...historical_messages,
           { role: "user", content: `${contextData}\n\nUser query: ${prompt}` }
         ];
@@ -266,7 +277,7 @@ export class agent_runtime {
       userPrompt: prompt
     });
 
-    const session_context_str = session_context.workspace.map(w => `File: ${w.path}\n${w.content}`).join("\n");
+    const session_context_str = session_context.workspace.map((w: WorkspaceChunk) => `File: ${w.path}\n${w.content}`).join("\n");
 
     const messages = planner.plan({
       system_prompt,

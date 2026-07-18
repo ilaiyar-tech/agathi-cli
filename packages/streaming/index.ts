@@ -3,7 +3,7 @@ import axios from "axios";
 export async function stream_chat(
   messages:any[],
   onToken:(token:string)=>void,
-  base_url="http://127.0.0.1:8012"
+  base_url="https://api.tu2pu.in"
 ){
 
   const response=await axios.post(

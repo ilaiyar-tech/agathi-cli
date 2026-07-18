@@ -55,11 +55,11 @@ export function sidebar() {
       <div className="border-b border-white/5 p-6">
         <div className="flex items-center gap-2">
           <div className="h-8 w-8 rounded-lg bg-gradient-to-tr from-purple-600 to-cyan-500 flex items-center justify-center font-bold text-white text-lg shadow-[0_0_15px_rgba(168,85,247,0.4)]">
-            A
+            T
           </div>
           <div>
             <div className="text-lg font-semibold tracking-tight text-white">
-              Agathi CLI
+              tu2pu CLI
             </div>
             <div className="text-xs text-gray-500 font-medium">
               Enterprise Control Center

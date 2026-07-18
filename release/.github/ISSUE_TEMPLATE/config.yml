@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Question & Support
+    url: https://github.com/ilaiyar/tu2pu/discussions
+    about: Please ask questions and get support here instead of opening issues.
+  - name: Security Vulnerability
+    url: https://github.com/ilaiyar/tu2pu/security/policy
+    about: If you think you found a security vulnerability, please report it via the Security Policy.

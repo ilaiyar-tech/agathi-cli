@@ -26,7 +26,7 @@ export default function dashboard_layout() {
             fontSize: "24px"
           }}
         >
-          agathi_ai
+          tu2pu
         </h2><Sidebar /><Sidebar /><Sidebar />
       </aside>
 
