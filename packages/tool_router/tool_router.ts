@@ -6,6 +6,47 @@ import { workflow } from "./workflow_manager.js";
 import { validator } from "../validation_engine/index.js";
 import { ContextOS } from "../context_engine/index.js";
 import { eventBus } from "../core/event_bus.js";
+import { Transcoder } from "../transcoder/transcoder.js";
+
+function safeParseJson(jsonStr: string): any {
+  const clean = (jsonStr || "").trim();
+  if (!clean) return {};
+  try {
+    return JSON.parse(clean);
+  } catch (e) {
+    try {
+      const repaired = Transcoder.jsonRepair(clean);
+      return JSON.parse(repaired);
+    } catch (err) {
+      const obj: any = {};
+      try {
+        const keyValPairs = clean.match(/"\w+"\s*:\s*(?:"[^"]*"|\d+|true|false|null|\[[^\]]*\]|\{[^\}]*\})/g);
+        if (keyValPairs) {
+          for (const pair of keyValPairs) {
+            const splitIdx = pair.indexOf(":");
+            if (splitIdx !== -1) {
+              const k = pair.substring(0, splitIdx).replace(/"/g, "").trim();
+              let v = pair.substring(splitIdx + 1).trim();
+              if (v.startsWith('"') && v.endsWith('"')) {
+                v = v.substring(1, v.length - 1);
+              } else if (v === "true") {
+                v = true as any;
+              } else if (v === "false") {
+                v = false as any;
+              } else if (v === "null") {
+                v = null as any;
+              } else if (!isNaN(Number(v))) {
+                v = Number(v) as any;
+              }
+              obj[k] = v;
+            }
+          }
+        }
+      } catch (regexErr) {}
+      return obj;
+    }
+  }
+}
 
 export interface ToolRouterOptions {
   model?: string;
@@ -85,7 +126,7 @@ export class tool_router {
       if (message.tool_calls && message.tool_calls.length > 0) {
         for (const tc of message.tool_calls) {
           const function_name = tc.function.name;
-          const function_args = JSON.parse(tc.function.arguments || "{}");
+          const function_args = safeParseJson(tc.function.arguments || "{}");
 
           const toolSignature = `${function_name}:${JSON.stringify(function_args)}`;
           if (executedTools.has(toolSignature) && function_name !== "finish") {
@@ -356,7 +397,7 @@ export class tool_router {
           const args_str = tc.function.arguments;
           let args: any = {};
           try {
-            args = JSON.parse(args_str || "{}");
+            args = safeParseJson(args_str || "{}");
           } catch (e) {}
 
           const toolSignature = `${name}:${JSON.stringify(args)}`;
