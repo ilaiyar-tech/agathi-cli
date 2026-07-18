@@ -218,6 +218,13 @@ export class TuiConsoleManager {
 
     process.stdout.write("\x1b[H\x1b[2J");
     process.stdout.write(output);
+
+    const termCell = cells.find(c => c.id === "terminal");
+    if (termCell) {
+      const promptY = termCell.y + termCell.height - 2;
+      const promptX = termCell.x + 4;
+      process.stdout.write(`\x1b[${promptY + 1};${promptX + 1}H`);
+    }
   }
 
   static setupEventBusSubscriptions() {
@@ -247,13 +254,14 @@ export class TuiConsoleManager {
     });
   }
 
-  static launch(workspaceId = "default") {
+  static async launch(workspaceId = "default") {
     this.activeWorkspace = workspaceId;
     this.registerDefaultWidgets();
     this.loadLayout(workspaceId);
     this.setupEventBusSubscriptions();
 
-    this.addLog(` TUI Workspace Console launched [Workspace: ${workspaceId}]`);
+    this.addLog(` ${chalk.bold.magenta("tu2pu")} Workspace Console launched [Workspace: ${workspaceId}]`);
+    this.addLog(` Type your prompt below. Try 'doctor', 'models', or chat directly.`);
 
     process.stdout.on("resize", () => {
       this.draw();
@@ -261,6 +269,47 @@ export class TuiConsoleManager {
 
     setInterval(() => {
       this.draw();
-    }, 3000);
+    }, 5000);
+
+    const readline = await import("node:readline/promises");
+    const rl = readline.createInterface({
+      input: process.stdin,
+      output: process.stdout
+    });
+
+    const { agent_runtime } = await import("../agent_runtime/agent_runtime.js");
+    const runtime = new agent_runtime();
+
+    while (true) {
+      this.draw();
+      const input = await rl.question(chalk.magenta("த › "));
+      const trimmed = input.trim();
+
+      if (!trimmed) continue;
+
+      if (trimmed === "exit" || trimmed === "quit" || trimmed === "/exit" || trimmed === "/quit") {
+        this.addLog(chalk.gray("Goodbye!"));
+        break;
+      }
+
+      if (trimmed === "clear" || trimmed === "/clear") {
+        this.scrollback = [];
+        this.addLog(" Console logs cleared.");
+        continue;
+      }
+
+      this.addLog(`${chalk.magenta("you ›")} ${trimmed}`);
+      this.draw();
+
+      try {
+        const response = await runtime.chat(trimmed, workspaceId);
+        this.addLog(`${chalk.cyan("த ›")} ${response.content}`);
+      } catch (e: any) {
+        this.addLog(`${chalk.red("Error ›")} ${e.message}`);
+      }
+    }
+
+    rl.close();
+    process.exit(0);
   }
 }

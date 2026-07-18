@@ -48,13 +48,13 @@ export class TerminalRenderer {
         }
 
         // Draw conversation logs inside terminal box
-        const maxLines = height - 2;
+        const maxLines = height - 3;
         const startIdx = Math.max(0, chatScrollback.length - maxLines);
         const visibleLines = chatScrollback.slice(startIdx);
 
         visibleLines.forEach((line, idx) => {
           const targetY = y + 1 + idx;
-          if (targetY < y + height - 1) {
+          if (targetY < y + height - 2) {
             // Strip ANSI codes just for spacing calculations, then write characters
             const cleanLine = line.replace(/[\u001b\u009b][[()#;?]*(?:[0-9]{1,4}(?:;[0-9]{0,4})*)?[0-9A-ORZcf-nqry=><]/g, "");
             const len = Math.min(width - 4, cleanLine.length);

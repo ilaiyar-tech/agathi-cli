@@ -14,6 +14,7 @@ import { launch_interactive } from "./interactive.js";
 import { register_project_commands } from "./commands/project.js";
 import { register_builder_commands } from "./commands/builder.js";
 import { register_deploy_commands } from "./commands/deploy.js";
+import { TuiConsoleManager } from "../../packages/workspace_terminal/index.js";
 
 const SERVER = "http://localhost:8100";
 
@@ -850,9 +851,9 @@ program
     });
   });
 
-// Default: if no command given, launch the interactive shell
+// Default: if no command given, launch the TUI Workspace Console Dashboard
 if (process.argv.length <= 2) {
-  launch_interactive({});
+  TuiConsoleManager.launch("default");
 } else {
   program.parse(process.argv);
 }
