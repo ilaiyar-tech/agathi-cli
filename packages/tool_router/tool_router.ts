@@ -274,13 +274,15 @@ export class tool_router {
                 const delta = choice.delta;
                 if (delta.content) {
                   content += delta.content;
-                  streamBuffer += delta.content;
-                  if (streamBuffer.includes("\n")) {
-                    const parts = streamBuffer.split("\n");
-                    streamBuffer = parts.pop() ?? "";
-                    for (const part of parts) {
-                      if (filterStreamLine(part) !== null) {
-                        onToken(part + "\n");
+                  if (workflow.getCurrentState() === "Summary") {
+                    streamBuffer += delta.content;
+                    if (streamBuffer.includes("\n")) {
+                      const parts = streamBuffer.split("\n");
+                      streamBuffer = parts.pop() ?? "";
+                      for (const part of parts) {
+                        if (filterStreamLine(part) !== null) {
+                          onToken(part + "\n");
+                        }
                       }
                     }
                   }
@@ -311,8 +313,10 @@ export class tool_router {
               reject(new Error("Stream aborted"));
               return;
             }
-            if (streamBuffer && filterStreamLine(streamBuffer) !== null) {
-              onToken(streamBuffer);
+            if (workflow.getCurrentState() === "Summary") {
+              if (streamBuffer && filterStreamLine(streamBuffer) !== null) {
+                onToken(streamBuffer);
+              }
             }
             resolve();
           });
@@ -378,16 +382,28 @@ export class tool_router {
             continue;
           }
 
+          let stageMsg = `Executing ${name}...`;
           if (name === "run_command") {
-            onToken(`\n\x1b[33m⚡ Bash:\x1b[36m ${args.command}\x1b[0m\n`);
-          } else if (name === "read_file") {
-            onToken(`\n\x1b[33m📖 Read:\x1b[36m ${args.path}\x1b[0m\n`);
-          } else if (name === "search_files") {
-            onToken(`\n\x1b[33m🔍 Search:\x1b[36m ${args.keyword}\x1b[0m\n`);
-          } else if (name === "write_file") {
-            onToken(`\n\x1b[33m✍ Write:\x1b[36m ${args.path}\x1b[0m\n`);
-          } else {
-            onToken(`\n\x1b[35m⚙ Tool:\x1b[36m ${name}\x1b[0m\n`);
+            const cmd = String(args.command || "");
+            stageMsg = cmd.includes("python") ? "Running Python..." : "Running Bash...";
+          } else if (name === "read_file" || name === "view_file") {
+            stageMsg = "Reading file...";
+          } else if (name === "write_file" || name === "write_to_file") {
+            stageMsg = "Writing file...";
+          } else if (name === "replace_file_content" || name === "multi_replace_file_content") {
+            stageMsg = "Updating file...";
+          } else if (name === "search_files" || name === "grep_search") {
+            stageMsg = "Searching files...";
+          } else if (name === "generate_image" || name === "draw_image") {
+            stageMsg = "Generating image...";
+          } else if (name.startsWith("browser_") || name.includes("page")) {
+            stageMsg = "Loading page...";
+          } else if (name === "whatsapp") {
+            stageMsg = "Sending alert...";
+          }
+          
+          if (onToken) {
+            onToken(`PROGRESS:${stageMsg}`);
           }
 
           const startTime = Date.now();
@@ -424,7 +440,9 @@ export class tool_router {
 
           if (["write_file", "replace_file_content", "multi_replace_file_content", "edit_file", "patch_file"].includes(name)) {
             workflow.transition("Verification");
-            onToken(`\n\x1b[32m✔ Auto-Verification Triggered...\x1b[0m\n`);
+            if (onToken) {
+              onToken(`PROGRESS:Verifying changes...`);
+            }
             const verify_result = await validator.verifyAll(process.cwd());
             const v_res_str = JSON.stringify(verify_result, null, 2);
             messages.push({
@@ -462,10 +480,12 @@ export class tool_router {
 export const tools_router = new tool_router();
 
 function filterStreamLine(text: string): string | null {
-  if (text.includes("[TOOL CALL]")) return null;
-  if (text.includes("<function-call>")) return null;
-  if (text.includes("</function-call>")) return null;
-  // If it's a raw JSON dump for tools, hide it
+  const lower = text.toLowerCase();
+  if (lower.includes("[tool call]")) return null;
+  if (lower.includes("<function-call>")) return null;
+  if (lower.includes("</function-call>")) return null;
+  if (lower.includes("<tool_") || lower.includes("</tool_")) return null;
+  if (lower.includes("tool_call") || lower.includes("function_call")) return null;
   if (text.trim().startsWith('{"name"') || text.trim().startsWith('{"command"')) return null;
   return text;
 }

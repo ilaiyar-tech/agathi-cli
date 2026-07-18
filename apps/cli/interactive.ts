@@ -377,7 +377,6 @@ export async function launch_interactive(opts: {
           const decoder = new TextDecoder();
           let buffer = "";
           let assistantContent = "";
-          let inToolContext = false;
 
           while (true) {
             const { done, value } = await reader.read();
@@ -408,39 +407,19 @@ export async function launch_interactive(opts: {
                 const choice = obj.choices?.[0];
                 if (choice?.delta?.content) {
                   const txt = choice.delta.content;
-                  assistantContent += txt;
                   
-                  if (txt.includes("⚡ Bash:")) {
-                    currentLoaderText = "Running Bash...";
-                    inToolContext = true;
-                  } else if (txt.includes("📖 Read:")) {
-                    currentLoaderText = "Reading File...";
-                    inToolContext = true;
-                  } else if (txt.includes("🔍 Search:")) {
-                    currentLoaderText = "Searching...";
-                    inToolContext = true;
-                  } else if (txt.includes("✍ Write:")) {
-                    currentLoaderText = "Writing File...";
-                    inToolContext = true;
-                  } else if (txt.includes("⚙ Tool:")) {
-                    currentLoaderText = "Executing Tool...";
-                    inToolContext = true;
+                  if (txt.startsWith("PROGRESS:")) {
+                    const stage = txt.slice(9);
+                    currentLoaderText = stage;
+                    if (loaderTimer) {
+                      updateLoader();
+                    }
+                    continue;
                   }
 
-                  if (inToolContext) {
-                     clearLoader();
-                     process.stdout.write(txt);
-                     if (txt.endsWith("\n")) {
-                        if (loaderTimer) clearInterval(loaderTimer);
-                        loaderTimer = setInterval(() => {
-                           frameIdx = (frameIdx + 1) % loaderFrames.length;
-                           updateLoader();
-                         }, 80);
-                     }
-                  } else {
-                     clearLoader();
-                     process.stdout.write(txt);
-                  }
+                  assistantContent += txt;
+                  clearLoader();
+                  process.stdout.write(txt);
                 }
               } catch (e) {}
             }
