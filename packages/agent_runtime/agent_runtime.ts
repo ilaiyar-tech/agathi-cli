@@ -82,6 +82,45 @@ function detectProfile(prompt: string): ExecutionProfile {
   return EXECUTION_PROFILES.chat;
 }
 
+function isConversational(prompt: string): boolean {
+  const p = prompt.toLowerCase().trim();
+  
+  // Greeting patterns
+  const greetings = [
+    "hi", "hello", "hey", "hola", "good morning", "good afternoon", "good evening", 
+    "yo", "what's up", "sup", "howdy"
+  ];
+  if (greetings.includes(p) || greetings.some(g => p.startsWith(g + " ") || p.endsWith(" " + g))) {
+    return true;
+  }
+  
+  // Appreciation / Feedback patterns
+  const appreciations = [
+    "thank you", "thanks", "tks", "ty", "cheers", "perfect", "awesome", "great", 
+    "it good", "it good actually", "good job", "nice", "well done", "cool", 
+    "no problem", "you're welcome", "welcome"
+  ];
+  if (appreciations.includes(p) || appreciations.some(a => p.startsWith(a + " ") || p.endsWith(" " + a) || p.includes(" " + a + " "))) {
+    return true;
+  }
+  
+  // Confirmation patterns
+  const confirmations = [
+    "yes", "no", "yep", "nope", "ok", "okay", "sure", "indeed", "correct", 
+    "fine", "agree"
+  ];
+  if (confirmations.includes(p)) {
+    return true;
+  }
+  
+  // Small talk / Short non-task expressions
+  if (p.length < 15 && !p.includes("/") && !p.includes("git") && !p.includes("npm") && !p.includes("run") && !p.includes("file") && !p.includes("dir")) {
+    return true;
+  }
+  
+  return false;
+}
+
 function cleanKeyword(raw: string): string {
   let cleaned = raw.replace(/[?.!]+/g, "").trim();
   const splitters = [" used in ", " in ", " for ", " that ", " which is "];
@@ -146,6 +185,39 @@ export class agent_runtime {
 
     // Save legacy message to avoid breaking tests relying on memory engine legacy queries
     (ContextOS.sessions as any).createSession(session_id, contextId);
+    
+    if (isConversational(prompt)) {
+      const model = router.detect_model(prompt);
+      await router.ensure(model);
+
+      const promptCtx = await ContextOS.prompts.build({
+        contextId,
+        sessionId: session_id,
+        executionId,
+        userPrompt: prompt,
+        tokenBudget: 4000
+      });
+
+      const historical_messages: Message[] = [];
+      for (const m of promptCtx.conversation) {
+        if (m.role === "system" || m.role === "user" || m.role === "assistant") {
+          historical_messages.push({
+            role: m.role,
+            content: m.content
+          });
+        }
+      }
+
+      const messages = [
+        { role: "system", content: "You are tu2pu, a helpful and premium AI coding and development collaborator. Respond naturally, helpfully, and concisely without calling tools or generating plans. Keep the tone conversational, warm, and encourage them on what they can build or learn next." },
+        ...historical_messages,
+        { role: "user", content: prompt }
+      ];
+
+      const response = await router.chat_model(model, messages);
+      ContextOS.state.complete();
+      return { id: executionId, session_id, content: response.content };
+    }
     
     // Add context to db
     const legacyMemory = (ContextOS as any).sessions; // backward compat db mapping
@@ -231,6 +303,43 @@ export class agent_runtime {
     const executionId = `exec-${crypto.randomUUID()}`;
 
     ContextOS.state.startExecution(contextId, session_id, executionId);
+
+    if (isConversational(prompt)) {
+      const model = router.detect_model(prompt);
+      await router.ensure(model);
+
+      const promptCtx = await ContextOS.prompts.build({
+        contextId,
+        sessionId: session_id,
+        executionId,
+        userPrompt: prompt,
+        tokenBudget: 4000
+      });
+
+      const historical_messages: Message[] = [];
+      for (const m of promptCtx.conversation) {
+        if (m.role === "system" || m.role === "user" || m.role === "assistant") {
+          historical_messages.push({
+            role: m.role,
+            content: m.content
+          });
+        }
+      }
+
+      const messages = [
+        { role: "system", content: "You are tu2pu, a helpful and premium AI coding and development collaborator. Respond naturally, helpfully, and concisely without calling tools or generating plans. Keep the tone conversational, warm, and encourage them on what they can build or learn next." },
+        ...historical_messages,
+        { role: "user", content: prompt }
+      ];
+
+      let content = "";
+      await router.stream_model(model, messages, (token) => {
+        content += token;
+        onToken(token);
+      });
+      ContextOS.state.complete();
+      return { id: executionId, session_id, content };
+    }
 
     const promptCtx = await ContextOS.prompts.build({
       contextId,
