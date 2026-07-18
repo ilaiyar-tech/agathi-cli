@@ -72,10 +72,10 @@ export class RenderManager {
   }
 
   private static repositionCursor(cells: LayoutCell[]) {
-    const termCell = cells.find(c => c.id === "terminal");
-    if (termCell) {
-      const promptY = termCell.y + termCell.height - 2;
-      const promptX = termCell.x + 4;
+    const inputCell = cells.find(c => c.id === "input_bar");
+    if (inputCell) {
+      const promptY = inputCell.y + 1;
+      const promptX = inputCell.x + 2;
       process.stdout.write(`\x1b[${promptY + 1};${promptX + 1}H`);
     }
 

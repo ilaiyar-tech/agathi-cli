@@ -129,7 +129,9 @@ export class TerminalRenderer {
       const { x, y, width, id } = cell;
       let titleStr = "";
       if (id === "terminal") {
-        titleStr = " [ துடுப்பு Workspace Console ] ";
+        titleStr = " Chat ";
+      } else if (id === "input_bar") {
+        titleStr = "";
       } else {
         const widget = WidgetRegistry.getWidget(id);
         if (widget) {

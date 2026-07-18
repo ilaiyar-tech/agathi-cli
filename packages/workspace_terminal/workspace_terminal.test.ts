@@ -7,13 +7,13 @@ async function runTests() {
   TuiConsoleManager.registerDefaultWidgets();
   
   const widgets = WidgetRegistry.getWidgets();
-  assert.strictEqual(widgets.length, 7);
+  assert.strictEqual(widgets.length, 6);
 
   // Test layout computations
   const cells = LayoutEngine.computeLayout(100, 30);
   assert.ok(cells.length > 1);
   assert.ok(cells.some(c => c.id === "terminal"));
-  assert.ok(cells.some(c => c.id === "models_widget"));
+  assert.ok(cells.some(c => c.id === "system_widget"));
 
   // Verify layout persistence
   TuiConsoleManager.saveLayout("test_tui_workspace");
@@ -22,7 +22,7 @@ async function runTests() {
   // Verify renderer compiles buffer
   const buffer = TerminalRenderer.drawBuffer(cells, 100, 30, ["Log entry 1", "Log entry 2"]);
   assert.ok(buffer.includes("Log entry 1"));
-  assert.ok(buffer.includes("Models"));
+  assert.ok(buffer.includes("System"));
 
   // --- STRESS TESTING WIDGET LAYOUTS ACROSS SPECIFIED TERMINAL SIZES ---
   const testSizes = [

@@ -1,15 +1,16 @@
 import { eventBus } from "../core/event_bus.js";
 import { sessions } from "../session_manager/index.js";
-import { whatsapp } from "../whatsapp_manager/index.js";
 import { scheduler } from "../task_scheduler/index.js";
 import { accuracyEngine } from "../accuracy_engine/index.js";
 import { get_active_model, model_usage } from "../model_manager/index.js";
-import axios from "axios";
+import { ConnectionManager } from "./connection_manager.js";
 
 export interface SystemStatusData {
-  connection: "Connecting" | "Connected" | "Disconnected" | "Reconnecting";
-  lastSeen: string;
-  uptime: number;
+  connection: "Connecting" | "Connected" | "Disconnected" | "Reconnecting" | "Degraded";
+  lastConnected: string;
+  lastHeartbeat: string;
+  latencyMs: number;
+  reconnectAttempts: number;
   rss: number;
   activeModel: string;
   modelLoaded: boolean;
@@ -33,31 +34,15 @@ export interface SystemStatusData {
 
 export class RuntimeStatusService {
   private static interval: NodeJS.Timeout | null = null;
-  private static backendUrl = process.env.BACKEND_URL || "http://localhost:8100";
-  private static connectionStatus: "Connecting" | "Connected" | "Disconnected" | "Reconnecting" = "Connecting";
-  private static lastSeen: Date | null = null;
-  private static uptime = 0;
-
   private static currentStatus: SystemStatusData = this.collectInitialStatus();
 
   static start(refreshIntervalMs = 3000) {
     if (this.interval) return;
 
     const check = async () => {
-      try {
-        const prevStatus = this.connectionStatus;
-        const res = await axios.get(`${this.backendUrl}/health`, { timeout: 1500 });
-        if (res.status === 200) {
-          this.connectionStatus = "Connected";
-          this.lastSeen = new Date();
-          this.uptime = res.data.uptime || 0;
-        } else {
-          this.connectionStatus = prevStatus === "Connected" ? "Reconnecting" : "Connecting";
-        }
-      } catch (err) {
-        this.connectionStatus = "Disconnected";
-      }
-
+      // 1. Run real connection monitoring
+      await ConnectionManager.monitor();
+      // 2. Refresh other system telemetry
       this.updateStatus();
     };
 
@@ -79,8 +64,10 @@ export class RuntimeStatusService {
   private static collectInitialStatus(): SystemStatusData {
     return {
       connection: "Connecting",
-      lastSeen: "Never",
-      uptime: 0,
+      lastConnected: "Never",
+      lastHeartbeat: "Never",
+      latencyMs: 0,
+      reconnectAttempts: 0,
       rss: process.memoryUsage().rss,
       activeModel: "unknown",
       modelLoaded: false,
@@ -143,10 +130,14 @@ export class RuntimeStatusService {
       metrics = accuracyEngine.getMetrics();
     } catch (e) {}
 
+    const conn = ConnectionManager.getStatus();
+
     this.currentStatus = {
-      connection: this.connectionStatus,
-      lastSeen: this.lastSeen ? this.lastSeen.toLocaleTimeString() : "Never",
-      uptime: this.uptime,
+      connection: conn.status,
+      lastConnected: conn.lastConnected,
+      lastHeartbeat: conn.lastHeartbeat,
+      latencyMs: conn.latencyMs,
+      reconnectAttempts: conn.reconnectAttempts,
       rss: process.memoryUsage().rss,
       activeModel,
       modelLoaded,
@@ -160,7 +151,6 @@ export class RuntimeStatusService {
       accuracy: metrics
     };
 
-    // Emit via global event bus
     eventBus.emitEvent("STATUS_UPDATE", { status: this.currentStatus });
   }
 }

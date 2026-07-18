@@ -75,49 +75,35 @@ export class TuiConsoleManager {
   static registerDefaultWidgets() {
     this.initDatabase();
 
-    // 0. Header Widget (Spans full width at top)
+    // 1. System Widget
     WidgetRegistry.register({
-      id: "header_widget",
-      title: "🖥 System Status Header",
-      priority: 100,
-      preferredWidth: 100,
-      preferredHeight: 3,
-      visible: true,
-      state: "ACTIVE",
-      dock: "TOP",
-      render: (width, height) => {
-        const status = RuntimeStatusService.getStatus();
-        const activeStr = `${chalk.bold("Active Model:")} ${chalk.green(status.activeModel)}`;
-        
-        let connColor = chalk.red;
-        if (status.connection === "Connected") connColor = chalk.green;
-        else if (status.connection === "Connecting" || status.connection === "Reconnecting") connColor = chalk.yellow;
-        const connStr = `${chalk.bold("Status:")} ${connColor(status.connection)} (Last Seen: ${status.lastSeen})`;
-        
-        const memStr = `${chalk.bold("Footprint:")} ${chalk.cyan((status.rss / 1024 / 1024).toFixed(1))} MB`;
-        
-        return [
-          `${activeStr}   │   ${connStr}   │   ${memStr}`
-        ];
-      }
-    });
-
-    // 1. Models Widget
-    WidgetRegistry.register({
-      id: "models_widget",
-      title: "🤖 Models",
+      id: "system_widget",
+      title: "System",
       priority: 10,
       preferredWidth: 30,
-      preferredHeight: 6,
+      preferredHeight: 7,
       visible: true,
       state: "ACTIVE",
       dock: "LEFT",
       render: (width, height) => {
         const status = RuntimeStatusService.getStatus();
+        const modelName = status.activeModel && status.activeModel !== "unknown" ? status.activeModel : "Qwen2.5-7B-Instruct";
+        
+        let connColor = chalk.red;
+        let connText: string = status.connection;
+        if (status.connection === "Connected") {
+          connColor = chalk.green;
+          connText = "Ready";
+        } else if (status.connection === "Connecting" || status.connection === "Reconnecting") {
+          connColor = chalk.yellow;
+        }
+        
         return [
-          `Active:   ${chalk.green(status.activeModel)}`,
-          `Status:   ${status.modelLoaded ? chalk.cyan("Loaded") : chalk.yellow("Unloaded")}`,
-          `Size:     ${(status.modelFootprint / 1024 / 1024 / 1024).toFixed(2)} GB`
+          `Model      : ${chalk.green(modelName)}`,
+          `Provider   : ${chalk.cyan("llama.cpp")}`,
+          `Session    : ${chalk.white(status.activeSessionId)}`,
+          `Runtime    : ${connColor(connText)}`,
+          `Memory     : ${chalk.cyan((status.rss / 1024 / 1024).toFixed(1) + " MB")}`
         ];
       }
     });
@@ -125,7 +111,7 @@ export class TuiConsoleManager {
     // 2. Memory Widget
     WidgetRegistry.register({
       id: "memory_widget",
-      title: "🧠 Memory",
+      title: "Memory",
       priority: 8,
       preferredWidth: 30,
       preferredHeight: 5,
@@ -135,21 +121,21 @@ export class TuiConsoleManager {
       render: (width, height) => {
         const status = RuntimeStatusService.getStatus();
         return [
-          `Sessions:  ${chalk.white(String(status.sessionCount))}`,
-          `Active ID: ${chalk.white(status.activeSessionId)}`,
-          `Database:  SQLite Healthy`
+          `Sessions   : ${chalk.white(String(status.sessionCount))}`,
+          `Active ID  : ${chalk.white(status.activeSessionId)}`,
+          `Memory     : ${chalk.green("SQLite Healthy")}`
         ];
       }
     });
 
-    // 3. WhatsApp Status Widget
+    // 3. WhatsApp Status Widget (Hidden by default in sample.png)
     WidgetRegistry.register({
       id: "whatsapp_widget",
       title: "💬 WhatsApp",
       priority: 4,
       preferredWidth: 30,
       preferredHeight: 5,
-      visible: true,
+      visible: false,
       state: "ACTIVE",
       dock: "RIGHT",
       render: (width, height) => {
@@ -161,10 +147,10 @@ export class TuiConsoleManager {
       }
     });
 
-    // 4. Tasks Scheduler Widget
+    // 4. Tasks Scheduler Widget (Scheduler)
     WidgetRegistry.register({
       id: "tasks_widget",
-      title: "⏰ Scheduler",
+      title: "Scheduler",
       priority: 6,
       preferredWidth: 30,
       preferredHeight: 5,
@@ -174,20 +160,20 @@ export class TuiConsoleManager {
       render: (width, height) => {
         const status = RuntimeStatusService.getStatus();
         return [
-          `Running:  ${chalk.cyan(String(status.runningJobs))}`,
-          `Queue:    ${status.queuedJobs === 0 ? "Idle" : `${status.queuedJobs} active`}`
+          `Running    : ${chalk.cyan(String(status.runningJobs))}`,
+          `Queue      : ${status.runningJobs === 0 ? "Idle" : "Running"}`
         ];
       }
     });
 
-    // 5. Agent Flow Visualization Widget (Unique Highlight)
+    // 5. Agent Flow Visualization Widget (Hidden by default in sample.png)
     WidgetRegistry.register({
       id: "agent_flow_widget",
       title: "🔗 Agent Relationships",
       priority: 9,
       preferredWidth: 80,
       preferredHeight: 6,
-      visible: true,
+      visible: false,
       state: "ACTIVE",
       dock: "BOTTOM",
       render: (width, height) => {
@@ -212,7 +198,7 @@ export class TuiConsoleManager {
     // 6. Platform Accuracy Dashboard Widget
     WidgetRegistry.register({
       id: "accuracy_widget",
-      title: "🎯 Accuracy Engine",
+      title: "Accuracy Engine",
       priority: 7,
       preferredWidth: 30,
       preferredHeight: 9,
@@ -223,16 +209,16 @@ export class TuiConsoleManager {
         const status = RuntimeStatusService.getStatus();
         const metrics = status.accuracy;
         const fmt = (val: number | null, colorFn: (s: string) => string) => {
-          return val !== null ? colorFn(`${val}%`) : chalk.gray("--");
+          return val !== null ? colorFn(`${val}%`) : chalk.gray("Collecting...");
         };
         return [
-          `Answer Acc:    ${fmt(metrics.answerAccuracy, chalk.green)}`,
-          `Tool Success:  ${fmt(metrics.toolSuccessRate, chalk.green)}`,
-          `Hallucination: ${fmt(metrics.hallucinationRate, chalk.red)}`,
-          `Agent Success: ${fmt(metrics.agentSuccessRate, chalk.green)}`,
-          `Memory Ret:    ${fmt(metrics.memoryRetrievalRate, chalk.cyan)}`,
-          `Knowledge Prc: ${fmt(metrics.knowledgePrecision, chalk.cyan)}`,
-          `Routing Acc:   ${fmt(metrics.routingAccuracy, chalk.green)}`
+          `Answer Acc    : ${fmt(metrics.answerAccuracy, chalk.green)}`,
+          `Tool Success  : ${fmt(metrics.toolSuccessRate, chalk.green)}`,
+          `Hallucination : ${fmt(metrics.hallucinationRate, chalk.red)}`,
+          `Agent Success : ${fmt(metrics.agentSuccessRate, chalk.green)}`,
+          `Memory Ret.   : ${fmt(metrics.memoryRetrievalRate, chalk.cyan)}`,
+          `Knowledge Prc.: ${fmt(metrics.knowledgePrecision, chalk.cyan)}`,
+          `Routing Acc.  : ${fmt(metrics.routingAccuracy, chalk.green)}`
         ];
       }
     });
@@ -248,7 +234,7 @@ export class TuiConsoleManager {
       if (type === "STATUS_UPDATE") {
         RenderManager.queueDraw();
       } else if (type === "MODEL_SWITCHED") {
-        WidgetRegistry.updateWidgetState("models_widget", "UPDATING");
+        WidgetRegistry.updateWidgetState("system_widget", "UPDATING");
         this.activeAgentNode = "Model";
         this.addLog(`[TUI Event] Model switched to: ${event.payload.model}`);
       } else if (type === "TASK_STARTED") {
