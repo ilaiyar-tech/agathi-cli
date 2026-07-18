@@ -3,7 +3,7 @@ import axios from "axios";
 export const api = axios.create({
   baseURL: window.location.hostname.includes("localhost") || window.location.hostname.includes("127.0.0.1")
     ? "http://127.0.0.1:8100"
-    : "https://api.tu2pu.in",
+    : "",
   timeout: 30000
 });
 
