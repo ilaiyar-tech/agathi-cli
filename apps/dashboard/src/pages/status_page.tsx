@@ -34,22 +34,26 @@ export function status_page() {
   }, []);
 
   const getStatusColor = (val: string) => {
-    if (val === "healthy" || val === "operational" || val === "online") return "bg-emerald-500 text-emerald-400 border-emerald-500/20";
-    if (val === "offline") return "bg-red-500 text-red-400 border-red-500/20";
-    return "bg-yellow-500 text-yellow-400 border-yellow-500/20";
+    if (val === "healthy" || val === "operational" || val === "online") return "bg-emerald-500/10 text-emerald-400 border-emerald-500/20";
+    if (val === "offline") return "bg-red-500/10 text-red-400 border-red-500/20";
+    return "bg-yellow-500/10 text-yellow-400 border-yellow-500/20";
   };
 
   return (
-    <div className="flex justify-center items-center w-full min-h-[calc(100vh-4rem)] bg-[#05070c] px-6 py-20 relative">
-      <div className="absolute top-1/4 left-1/3 w-[300px] h-[300px] bg-purple-900/10 rounded-full blur-[80px] pointer-events-none" />
+    <div className="flex justify-center items-center w-full min-h-[calc(100vh-4rem)] bg-[#030407] px-8 py-24 relative overflow-hidden">
+      {/* Glows */}
+      <div className="absolute top-[-10%] left-[-10%] w-[50%] h-[50%] bg-purple-900/10 rounded-full blur-[130px] pointer-events-none" />
+      <div className="absolute bottom-[-10%] right-[-10%] w-[50%] h-[50%] bg-cyan-900/10 rounded-full blur-[130px] pointer-events-none" />
 
-      <div className="w-full max-w-xl rounded-2xl border border-white/5 bg-black/40 backdrop-blur-2xl p-8 shadow-2xl relative">
-        <div className="flex justify-between items-center mb-8 border-b border-white/5 pb-4">
+      <div className="w-full max-w-2xl rounded-3xl border border-white/[0.06] bg-white/[0.02] backdrop-blur-2xl p-10 md:p-12 shadow-2xl relative">
+        <div className="absolute top-0 left-1/2 -translate-x-1/2 w-48 h-[1px] bg-gradient-to-r from-transparent via-purple-500/50 to-transparent" />
+
+        <div className="flex justify-between items-center mb-10 border-b border-white/[0.06] pb-6">
           <div>
-            <h2 className="text-2xl font-bold text-white">System Status</h2>
-            <p className="text-xs text-gray-500">Real-time health of tu2pu services.</p>
+            <h2 className="text-3xl font-extrabold text-white">System Status</h2>
+            <p className="text-sm text-gray-500 font-medium">Real-time health of tu2pu services.</p>
           </div>
-          <div className="flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-xs text-emerald-400 font-semibold">
+          <div className="flex items-center gap-2.5 px-4 py-2 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-xs text-emerald-400 font-bold tracking-wide">
             <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
             All Systems Operational
           </div>
@@ -66,9 +70,9 @@ export function status_page() {
           ].map((srv) => {
             const val = status[srv.id] || "operational";
             return (
-              <div key={srv.id} className="flex justify-between items-center p-4 rounded-xl border border-white/5 bg-white/5">
-                <span className="text-sm font-semibold text-gray-300">{srv.name}</span>
-                <span className={`px-2.5 py-0.5 rounded-full text-xs font-semibold border ${getStatusColor(val)}`}>
+              <div key={srv.id} className="flex justify-between items-center p-5 rounded-2xl border border-white/[0.06] bg-white/[0.01] hover:bg-white/[0.03] transition-colors">
+                <span className="text-base font-bold text-gray-300">{srv.name}</span>
+                <span className={`px-4.5 py-1.5 rounded-full text-xs font-bold border capitalize ${getStatusColor(val)}`}>
                   {val === "checking" ? "Checking..." : val}
                 </span>
               </div>
@@ -76,8 +80,8 @@ export function status_page() {
           })}
         </div>
 
-        <div className="mt-8 border-t border-white/5 pt-6 flex justify-between text-xs text-gray-500">
-          <span>Response latency: <span className="font-semibold text-purple-400">{ping !== null ? `${ping}ms` : "N/A"}</span></span>
+        <div className="mt-10 border-t border-white/[0.06] pt-6 flex justify-between text-xs text-gray-500 font-medium">
+          <span>Response latency: <span className="font-bold text-purple-400">{ping !== null ? `${ping}ms` : "N/A"}</span></span>
           <span>Checked: {status.systemTime ? new Date(status.systemTime).toLocaleTimeString() : "Just now"}</span>
         </div>
       </div>

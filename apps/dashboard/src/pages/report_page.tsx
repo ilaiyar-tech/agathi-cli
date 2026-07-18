@@ -55,35 +55,39 @@ export function report_page() {
   };
 
   return (
-    <div className="flex justify-center items-center w-full min-h-[calc(100vh-4rem)] bg-[#05070c] px-6 py-20 relative">
-      <div className="absolute top-1/4 left-1/3 w-[300px] h-[300px] bg-purple-900/10 rounded-full blur-[80px] pointer-events-none" />
+    <div className="flex justify-center items-center w-full min-h-[calc(100vh-4rem)] bg-[#030407] px-8 py-24 relative overflow-hidden">
+      {/* Glows */}
+      <div className="absolute top-[-10%] left-[-10%] w-[50%] h-[50%] bg-purple-900/10 rounded-full blur-[130px] pointer-events-none" />
+      <div className="absolute bottom-[-10%] right-[-10%] w-[50%] h-[50%] bg-cyan-900/10 rounded-full blur-[130px] pointer-events-none" />
 
-      <div className="w-full max-w-2xl rounded-2xl border border-white/5 bg-black/40 backdrop-blur-2xl p-8 shadow-2xl relative">
-        <h2 className="text-3xl font-bold tracking-tight text-white mb-2 text-center">Diagnostics & Bug Reporter</h2>
-        <p className="text-gray-400 text-sm text-center mb-8">
+      <div className="w-full max-w-3xl rounded-3xl border border-white/[0.06] bg-white/[0.02] backdrop-blur-2xl p-10 md:p-14 shadow-2xl relative">
+        <div className="absolute top-0 left-1/2 -translate-x-1/2 w-48 h-[1px] bg-gradient-to-r from-transparent via-purple-500/50 to-transparent" />
+
+        <h2 className="text-4xl font-extrabold tracking-tight text-white mb-3 text-center">Diagnostics & Bug Reporter</h2>
+        <p className="text-gray-400 text-base text-center mb-12 font-medium">
           Submit issues, crashes, or feature requests. Diagnostic metadata will be collected automatically.
         </p>
 
         {error && (
-          <div className="mb-6 p-4 rounded-xl bg-red-500/10 border border-red-500/20 text-xs font-semibold text-red-400">
+          <div className="mb-8 p-5 rounded-2xl bg-red-500/10 border border-red-500/20 text-sm font-semibold text-red-400">
             ⚠ {error}
           </div>
         )}
 
         {success && (
-          <div className="mb-6 p-4 rounded-xl bg-purple-500/10 border border-purple-500/20 text-xs font-semibold text-purple-400">
+          <div className="mb-8 p-5 rounded-2xl bg-purple-500/10 border border-purple-500/20 text-sm font-semibold text-purple-400">
             ✔ {success}
           </div>
         )}
 
-        <form onSubmit={handleSubmit} className="space-y-6">
-          <div className="grid grid-cols-2 gap-4">
+        <form onSubmit={handleSubmit} className="space-y-8">
+          <div className="grid grid-cols-2 gap-6">
             <div>
-              <label className="block text-xs font-bold text-gray-400 uppercase tracking-wide mb-2">Report Type</label>
+              <label className="block text-xs font-bold text-gray-400 uppercase tracking-widest mb-3">Report Type</label>
               <select
                 value={kind}
                 onChange={(e) => setKind(e.target.value)}
-                className="w-full rounded-xl border border-white/10 bg-black/60 px-3 py-3 text-sm text-white focus:outline-none focus:border-purple-500/50"
+                className="w-full rounded-2xl border border-white/10 bg-black/60 px-4 py-4 text-sm text-white focus:outline-none focus:border-purple-500/50"
               >
                 <option>Bug</option>
                 <option>Crash</option>
@@ -93,53 +97,53 @@ export function report_page() {
             </div>
 
             <div>
-              <label className="block text-xs font-bold text-gray-400 uppercase tracking-wide mb-2">CLI Version</label>
+              <label className="block text-xs font-bold text-gray-400 uppercase tracking-widest mb-3">CLI Version</label>
               <input
                 type="text"
                 disabled
                 value={envInfo.cliVersion}
-                className="w-full rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-gray-500 cursor-not-allowed"
+                className="w-full rounded-2xl border border-white/10 bg-white/[0.03] px-5 py-4 text-sm text-gray-500 cursor-not-allowed font-semibold"
               />
             </div>
           </div>
 
           <div>
-            <label className="block text-xs font-bold text-gray-400 uppercase tracking-wide mb-2">Description</label>
+            <label className="block text-xs font-bold text-gray-400 uppercase tracking-widest mb-3">Description</label>
             <textarea
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               placeholder="Please explain the bug, steps to reproduce, or requested feature in detail..."
               required
-              rows={4}
-              className="w-full rounded-xl border border-white/10 bg-white/5 p-4 text-sm text-white focus:outline-none focus:border-purple-500/50"
+              rows={5}
+              className="w-full rounded-2xl border border-white/10 bg-white/[0.03] p-5 text-base text-white focus:outline-none focus:border-purple-500/50 leading-relaxed"
             />
           </div>
 
           <div>
-            <label className="block text-xs font-bold text-gray-400 uppercase tracking-wide mb-2">Workspace Logs (Optional)</label>
+            <label className="block text-xs font-bold text-gray-400 uppercase tracking-widest mb-3">Workspace Logs (Optional)</label>
             <textarea
               value={logs}
               onChange={(e) => setLogs(e.target.value)}
               placeholder="Paste terminal outputs or execution logs here..."
-              rows={4}
-              className="w-full rounded-xl border border-white/10 bg-white/5 p-4 text-xs text-purple-300 focus:outline-none focus:border-purple-500/50 font-mono"
+              rows={5}
+              className="w-full rounded-2xl border border-white/10 bg-white/[0.03] p-5 text-xs text-purple-300 focus:outline-none focus:border-purple-500/50 font-mono leading-relaxed shadow-inner"
             />
           </div>
 
           {/* Auto collected system metadata */}
-          <div className="p-4 rounded-xl border border-white/5 bg-white/5 space-y-2">
-            <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wider block">Auto-Collected Metadata</span>
-            <div className="grid grid-cols-2 gap-x-6 gap-y-1.5 text-xs text-gray-400 font-mono">
-              <div>OS/Platform: <span className="text-gray-300">{envInfo.os}</span></div>
-              <div>Browser: <span className="text-gray-300 truncate block max-w-[200px]">{envInfo.browser}</span></div>
-              <div>API Engine: <span className="text-gray-300">tu2pu_server {envInfo.apiVersion}</span></div>
+          <div className="p-6 rounded-2xl border border-white/[0.06] bg-white/[0.01] space-y-3">
+            <span className="text-[10px] font-bold text-gray-500 uppercase tracking-widest block">Auto-Collected Metadata</span>
+            <div className="grid grid-cols-2 gap-x-8 gap-y-2 text-xs text-gray-400 font-mono">
+              <div>OS/Platform: <span className="text-gray-300 font-semibold">{envInfo.os}</span></div>
+              <div>Browser: <span className="text-gray-300 font-semibold truncate block max-w-[220px]">{envInfo.browser}</span></div>
+              <div className="col-span-2">API Engine: <span className="text-gray-300 font-semibold">tu2pu_server {envInfo.apiVersion}</span></div>
             </div>
           </div>
 
           <button
             type="submit"
             disabled={loading}
-            className="w-full rounded-xl bg-white text-black py-3 text-sm font-semibold hover:bg-gray-200 transition-colors flex items-center justify-center gap-2"
+            className="w-full rounded-2xl bg-white text-black py-4 text-base font-bold hover:bg-gray-200 active:scale-[0.99] transition-all shadow-lg flex items-center justify-center gap-2"
           >
             {loading ? "Submitting..." : "Submit Diagnostics Report"}
           </button>

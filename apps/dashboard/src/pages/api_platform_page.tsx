@@ -123,7 +123,7 @@ export function api_platform_page() {
   };
 
   return (
-    <div className="mx-auto max-w-7xl px-6 py-16 flex flex-col lg:flex-row gap-12 min-h-[calc(100vh-10rem)]">
+    <div className="mx-auto max-w-7xl px-8 py-16 flex flex-col lg:flex-row gap-12 min-h-[calc(100vh-10rem)]">
       {/* API Reference Details */}
       <div className="flex-1 space-y-12">
         <div>
@@ -137,31 +137,31 @@ export function api_platform_page() {
 
         {/* Auth Docs */}
         <div className="space-y-4">
-          <h2 className="text-2xl font-bold text-white border-b border-white/5 pb-2">
+          <h2 className="text-2xl font-bold text-white border-b border-white/[0.06] pb-3">
             Authentication
           </h2>
-          <p className="text-sm text-gray-400 leading-relaxed">
+          <p className="text-base text-gray-400 leading-relaxed">
             All API requests must contain a secure Bearer token key in the HTTP header authorization. Generate developer API keys under the user dashboard key panel.
           </p>
-          <pre className="bg-black/40 border border-white/5 p-4 rounded-xl font-mono text-xs text-purple-300">
+          <pre className="bg-black/50 border border-white/[0.06] p-6 rounded-2xl font-mono text-sm text-purple-300 shadow-md">
             Authorization: Bearer sk_tu2pu_YOUR_SECRET_KEY
           </pre>
         </div>
 
         {/* Code Snippets */}
         <div className="space-y-4">
-          <h2 className="text-2xl font-bold text-white border-b border-white/5 pb-2">
+          <h2 className="text-2xl font-bold text-white border-b border-white/[0.06] pb-3">
             Code Examples
           </h2>
-          <div className="border border-white/5 bg-black/20 rounded-2xl overflow-hidden shadow-xl">
-            <div className="flex border-b border-white/5 bg-white/5 text-xs text-gray-400">
+          <div className="border border-white/[0.06] bg-[#080b11]/30 rounded-2xl overflow-hidden shadow-2xl">
+            <div className="flex border-b border-white/[0.06] bg-white/[0.02] text-sm text-gray-400">
               {Object.keys(CODE_EXAMPLES).map((lang) => (
                 <button
                   key={lang}
                   onClick={() => setActiveLang(lang as any)}
-                  className={`px-5 py-3 font-semibold uppercase border-b-2 transition-all ${
+                  className={`px-6 py-4.5 font-bold uppercase border-b-2 transition-all duration-300 ${
                     activeLang === lang
-                      ? "border-purple-500 text-white bg-purple-950/10"
+                      ? "border-purple-500 text-white bg-purple-950/20"
                       : "border-transparent hover:text-white"
                   }`}
                 >
@@ -169,7 +169,7 @@ export function api_platform_page() {
                 </button>
               ))}
             </div>
-            <pre className="p-6 font-mono text-xs text-purple-300 overflow-x-auto leading-relaxed max-h-[300px]">
+            <pre className="p-8 font-mono text-xs md:text-sm text-purple-300 overflow-x-auto leading-relaxed max-h-[360px]">
               {CODE_EXAMPLES[activeLang]}
             </pre>
           </div>
@@ -177,28 +177,28 @@ export function api_platform_page() {
       </div>
 
       {/* Interactive Explorer Panel */}
-      <div className="w-full lg:w-[480px] shrink-0 border border-white/5 rounded-2xl bg-black/20 p-8 shadow-xl flex flex-col justify-between self-start">
+      <div className="w-full lg:w-[480px] shrink-0 border border-white/[0.06] rounded-3xl bg-[#080b11]/30 p-8 shadow-2xl flex flex-col justify-between self-start relative overflow-hidden">
         <div className="space-y-6">
           <div>
-            <h3 className="text-lg font-bold text-white mb-1">Interactive API Explorer</h3>
-            <p className="text-xs text-gray-500">Query real endpoints on your local or cloud tunnel.</p>
+            <h3 className="text-xl font-bold text-white mb-1">Interactive API Explorer</h3>
+            <p className="text-xs text-gray-500 font-medium">Query real endpoints on your local or cloud tunnel.</p>
           </div>
 
           <div className="space-y-4">
             <div>
-              <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-2">Bearer API Key</label>
+              <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2.5">Bearer API Key</label>
               <input
                 type="text"
                 placeholder="sk_tu2pu_..."
                 value={apiKey}
                 onChange={(e) => setApiKey(e.target.value)}
-                className="w-full rounded-xl border border-white/10 bg-white/5 px-4 py-2.5 text-xs text-white focus:outline-none focus:border-purple-500/50 font-mono"
+                className="w-full rounded-2xl border border-white/10 bg-white/[0.03] px-4 py-3 text-xs text-white focus:outline-none focus:border-purple-500/50 font-mono"
               />
             </div>
 
-            <div className="flex gap-3">
-              <div className="w-24">
-                <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-2">Method</label>
+            <div className="flex gap-4">
+              <div className="w-28">
+                <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2.5">Method</label>
                 <select
                   value={method}
                   onChange={(e) => {
@@ -209,7 +209,7 @@ export function api_platform_page() {
                       setEndpoint("/v1/chat/completions");
                     }
                   }}
-                  className="w-full rounded-xl border border-white/10 bg-black/60 px-3 py-2.5 text-xs text-white focus:outline-none focus:border-purple-500/50"
+                  className="w-full rounded-2xl border border-white/10 bg-black/60 px-3 py-3 text-xs text-white focus:outline-none focus:border-purple-500/50"
                 >
                   <option>GET</option>
                   <option>POST</option>
@@ -217,24 +217,24 @@ export function api_platform_page() {
               </div>
 
               <div className="flex-1">
-                <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-2">Endpoint Route</label>
+                <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2.5">Endpoint Route</label>
                 <input
                   type="text"
                   value={endpoint}
                   onChange={(e) => setEndpoint(e.target.value)}
-                  className="w-full rounded-xl border border-white/10 bg-white/5 px-4 py-2.5 text-xs text-white focus:outline-none focus:border-purple-500/50 font-mono"
+                  className="w-full rounded-2xl border border-white/10 bg-white/[0.03] px-4 py-3 text-xs text-white focus:outline-none focus:border-purple-500/50 font-mono"
                 />
               </div>
             </div>
 
             {method === "POST" && (
               <div>
-                <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-2">Request Body (JSON)</label>
+                <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2.5">Request Body (JSON)</label>
                 <textarea
                   value={reqBody}
                   onChange={(e) => setReqBody(e.target.value)}
-                  rows={6}
-                  className="w-full rounded-xl border border-white/10 bg-white/5 p-4 text-xs text-purple-300 focus:outline-none focus:border-purple-500/50 font-mono"
+                  rows={8}
+                  className="w-full rounded-2xl border border-white/10 bg-white/[0.03] p-4 text-xs text-purple-300 focus:outline-none focus:border-purple-500/50 font-mono leading-relaxed"
                 />
               </div>
             )}
@@ -242,7 +242,7 @@ export function api_platform_page() {
             <button
               onClick={handleTestRequest}
               disabled={loading}
-              className="w-full rounded-xl bg-white text-black py-2.5 text-sm font-semibold hover:bg-gray-200 transition-colors flex items-center justify-center gap-2"
+              className="w-full rounded-2xl bg-white text-black py-3.5 text-sm font-bold hover:bg-gray-200 transition-colors flex items-center justify-center gap-2"
             >
               {loading ? "Sending..." : "Send Request"}
             </button>
@@ -250,9 +250,9 @@ export function api_platform_page() {
         </div>
 
         {response && (
-          <div className="mt-6 space-y-2">
-            <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Response Payload</span>
-            <pre className="bg-black/40 border border-white/5 p-4 rounded-xl font-mono text-xs text-purple-300 overflow-x-auto max-h-[220px]">
+          <div className="mt-8 space-y-3">
+            <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest block">Response Payload</span>
+            <pre className="bg-black/50 border border-white/[0.06] p-5 rounded-2xl font-mono text-xs text-purple-300 overflow-x-auto max-h-[250px] shadow-inner leading-relaxed">
               {response}
             </pre>
           </div>
