@@ -71,25 +71,218 @@ export class PromptIdentityManager {
   }
 }
 
+export type IntentCategory = "command" | "conversation" | "question" | "task" | "mixed";
+
+export interface IntentMatch {
+  category: IntentCategory;
+  intent: string;
+  confidence: number;
+}
+
+export interface IntentPattern {
+  category: IntentCategory;
+  intent: string;
+  patterns: (string | RegExp)[];
+}
+
+export class IntentRegistry {
+  private static instance: IntentRegistry;
+  private patterns: IntentPattern[] = [];
+
+  private constructor() {
+    this.initializeDefaults();
+  }
+
+  public static getInstance(): IntentRegistry {
+    if (!IntentRegistry.instance) {
+      IntentRegistry.instance = new IntentRegistry();
+    }
+    return IntentRegistry.instance;
+  }
+
+  private initializeDefaults() {
+    // Commands
+    this.register({
+      category: "command",
+      intent: "command",
+      patterns: [/^\/\w+/]
+    });
+
+    // Greetings
+    this.register({
+      category: "conversation",
+      intent: "greeting",
+      patterns: [
+        "hi", "hello", "hey", "hola", "good morning", "good afternoon", "good evening",
+        "yo", "what's up", "sup", "howdy"
+      ]
+    });
+
+    // Appreciation / Feedback
+    this.register({
+      category: "conversation",
+      intent: "appreciation",
+      patterns: [
+        "thank you", "thanks", "tks", "ty", "cheers", "perfect", "awesome", "great",
+        "it good", "it good actually", "good job", "nice", "well done", "cool",
+        "no problem", "you're welcome", "welcome"
+      ]
+    });
+
+    // Confirmation
+    this.register({
+      category: "conversation",
+      intent: "confirmation",
+      patterns: [
+        "yes", "no", "yep", "nope", "ok", "okay", "sure", "indeed", "correct",
+        "fine", "agree", "proceed", "continue"
+      ]
+    });
+
+    // File analysis tasks
+    this.register({
+      category: "task",
+      intent: "file_analysis",
+      patterns: [
+        "check the files", "search files", "find in codebase", "look for files",
+        "find references", "search for", "locate files", "read file"
+      ]
+    });
+
+    // Git tasks
+    this.register({
+      category: "task",
+      intent: "git",
+      patterns: [
+        "git status", "git commit", "git log", "git diff", "git push", "git pull"
+      ]
+    });
+
+    // Terminal execution tasks
+    this.register({
+      category: "task",
+      intent: "terminal",
+      patterns: [
+        "run command", "execute bash", "npm run", "npm install", "compile", "rebuild"
+      ]
+    });
+
+    // Investigation questions
+    this.register({
+      category: "question",
+      intent: "investigation",
+      patterns: [
+        "why", "how", "trace", "investigate", "diagnose", "where", "who started"
+      ]
+    });
+
+    // Deployment tasks
+    this.register({
+      category: "task",
+      intent: "deployment",
+      patterns: [
+        "deploy", "publish", "wrangler", "release"
+      ]
+    });
+  }
+
+  public register(pattern: IntentPattern) {
+    this.patterns.push(pattern);
+  }
+
+  public getPatterns(): IntentPattern[] {
+    return this.patterns;
+  }
+}
+
 export class IntentAnalyzer {
+  private registry = IntentRegistry.getInstance();
+
+  classify(prompt: string): IntentMatch {
+    const cleanPrompt = prompt.trim();
+    if (!cleanPrompt) {
+      return { category: "conversation", intent: "chat", confidence: 1.0 };
+    }
+
+    const p = cleanPrompt.toLowerCase();
+    
+    // Check if it is a CLI command prefix (e.g. starts with "/")
+    if (p.startsWith("/")) {
+      return { category: "command", intent: "command", confidence: 1.0 };
+    }
+
+    let matches: { pattern: IntentPattern; score: number }[] = [];
+
+    // Evaluate registry patterns
+    for (const pattern of this.registry.getPatterns()) {
+      for (const pat of pattern.patterns) {
+        if (typeof pat === "string") {
+          if (p === pat) {
+            matches.push({ pattern, score: 1.0 });
+          } else if (p.startsWith(pat + " ") || p.endsWith(" " + pat) || p.includes(" " + pat + " ")) {
+            matches.push({ pattern, score: 0.8 });
+          }
+        } else if (pat instanceof RegExp) {
+          if (pat.test(cleanPrompt)) {
+            matches.push({ pattern, score: 0.9 });
+          }
+        }
+      }
+    }
+
+    // Sort matches by match score descending
+    matches.sort((a, b) => b.score - a.score);
+
+    // Check for mixed intent: e.g., if there are multiple matches with different categories,
+    // especially if there is a conversational category AND a task/question category.
+    // In this case, we prioritize the task or question category!
+    const taskOrQuestionMatch = matches.find(m => m.pattern.category === "task" || m.pattern.category === "question");
+    const conversationMatch = matches.find(m => m.pattern.category === "conversation");
+
+    if (taskOrQuestionMatch && conversationMatch) {
+      // Mixed intent detected - prioritize task/question with high confidence
+      return {
+        category: "mixed",
+        intent: taskOrQuestionMatch.pattern.intent,
+        confidence: Math.max(taskOrQuestionMatch.score, 0.85)
+      };
+    }
+
+    if (matches.length > 0) {
+      const best = matches[0];
+      return {
+        category: best.pattern.category,
+        intent: best.pattern.intent,
+        confidence: best.score
+      };
+    }
+
+    // Default fallbacks:
+    // If it is very short and doesn't contain command/coding words, treat as conversation
+    const codingKeywords = ["file", "dir", "git", "run", "npm", "build", "code", "class", "function", "const", "let", "var", "import"];
+    const hasCodingKeywords = codingKeywords.some(kw => p.includes(kw));
+    
+    if (cleanPrompt.length < 15 && !hasCodingKeywords) {
+      return { category: "conversation", intent: "chat", confidence: 0.7 };
+    }
+
+    // If it contains a question indicator
+    const questions = ["what", "who", "which", "where", "when", "can you", "is it"];
+    if (questions.some(q => p.startsWith(q))) {
+      return { category: "question", intent: "chat", confidence: 0.8 };
+    }
+
+    // Otherwise, treat as task (default planner pipeline fallback)
+    return { category: "task", intent: "chat", confidence: 0.5 };
+  }
+
+  // Preserve backward compatibility for analyze() method returning string
   analyze(prompt: string): string {
-    const p = prompt.toLowerCase();
-    if (p.includes("git status") || p.includes("git commit") || p.includes("git diff") || p.includes("git log")) {
-      return "git";
+    const classification = this.classify(prompt);
+    if (classification.category === "conversation") {
+      return "chat";
     }
-    if (p.includes("run command") || p.includes("execute") || p.includes("npm run") || p.includes("npm install")) {
-      return "terminal";
-    }
-    if (p.includes("check the files") || p.includes("search files") || p.includes("find in codebase") || p.includes("read file")) {
-      return "file_analysis";
-    }
-    if (p.includes("why") || p.includes("how") || p.includes("trace") || p.includes("investigate") || p.includes("diagnose")) {
-      return "investigation";
-    }
-    if (p.includes("deploy") || p.includes("publish") || p.includes("wrangler")) {
-      return "deployment";
-    }
-    return "chat";
+    return classification.intent;
   }
 }
 

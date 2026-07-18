@@ -6,6 +6,7 @@ import { system_prompt } from "../prompts/system_prompt.js";
 import { registry } from "../tools/index.js";
 import { ContextOS } from "../context_engine/index.js";
 import { WorkspaceChunk } from "../context/context_interfaces.js";
+import { IntentAnalyzer } from "../prompt_intelligence/prompt_intelligence.js";
 
 export interface ExecutionProfile {
   intent: string;
@@ -83,41 +84,11 @@ function detectProfile(prompt: string): ExecutionProfile {
 }
 
 function isConversational(prompt: string): boolean {
-  const p = prompt.toLowerCase().trim();
-  
-  // Greeting patterns
-  const greetings = [
-    "hi", "hello", "hey", "hola", "good morning", "good afternoon", "good evening", 
-    "yo", "what's up", "sup", "howdy"
-  ];
-  if (greetings.includes(p) || greetings.some(g => p.startsWith(g + " ") || p.endsWith(" " + g))) {
+  const analyzer = new IntentAnalyzer();
+  const classification = analyzer.classify(prompt);
+  if (classification.category === "conversation" && classification.confidence >= 0.7) {
     return true;
   }
-  
-  // Appreciation / Feedback patterns
-  const appreciations = [
-    "thank you", "thanks", "tks", "ty", "cheers", "perfect", "awesome", "great", 
-    "it good", "it good actually", "good job", "nice", "well done", "cool", 
-    "no problem", "you're welcome", "welcome"
-  ];
-  if (appreciations.includes(p) || appreciations.some(a => p.startsWith(a + " ") || p.endsWith(" " + a) || p.includes(" " + a + " "))) {
-    return true;
-  }
-  
-  // Confirmation patterns
-  const confirmations = [
-    "yes", "no", "yep", "nope", "ok", "okay", "sure", "indeed", "correct", 
-    "fine", "agree"
-  ];
-  if (confirmations.includes(p)) {
-    return true;
-  }
-  
-  // Small talk / Short non-task expressions
-  if (p.length < 15 && !p.includes("/") && !p.includes("git") && !p.includes("npm") && !p.includes("run") && !p.includes("file") && !p.includes("dir")) {
-    return true;
-  }
-  
   return false;
 }
 
