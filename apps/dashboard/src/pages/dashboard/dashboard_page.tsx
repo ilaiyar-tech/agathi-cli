@@ -266,12 +266,13 @@ export function dashboard_page() {
                   <span className="text-xs font-mono text-gray-500 break-all block mb-4">SHA256: {rel.checksum}</span>
                   <p className="text-xs text-gray-400 mb-6">{rel.notes}</p>
                 </div>
-                <button
-                  onClick={() => alert(`Initiating release package download simulation for ${rel.filename}`)}
-                  className="rounded-lg bg-white/5 border border-white/10 text-white font-semibold py-2 hover:bg-white/10 text-xs transition-colors"
+                <a
+                  href={`/${rel.filename}`}
+                  download={rel.filename}
+                  className="rounded-lg bg-white/5 border border-white/10 text-white font-semibold py-2 hover:bg-white/10 text-xs transition-colors text-center block"
                 >
                   Download v{rel.version} Bin
-                </button>
+                </a>
               </div>
             ))}
           </div>

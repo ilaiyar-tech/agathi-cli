@@ -18,8 +18,7 @@ export function signup_page() {
     try {
       const res = await signup({ name, email, password });
       localStorage.setItem("tu2pu_session_token", res.data.token);
-      navigate("/dashboard");
-      window.location.reload();
+      window.location.href = "/dashboard";
     } catch (err: any) {
       setError(err.response?.data?.error || "Registration failed. Please try again.");
     } finally {

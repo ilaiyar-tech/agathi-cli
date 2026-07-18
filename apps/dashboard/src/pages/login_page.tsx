@@ -17,8 +17,7 @@ export function login_page() {
     try {
       const res = await login({ email, password });
       localStorage.setItem("tu2pu_session_token", res.data.token);
-      navigate("/dashboard");
-      window.location.reload(); // Refresh header user state
+      window.location.href = "/dashboard";
     } catch (err: any) {
       setError(err.response?.data?.error || "Login failed. Please check your credentials.");
     } finally {

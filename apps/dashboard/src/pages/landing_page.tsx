@@ -245,12 +245,9 @@ export function landing_page() {
               </div>
 
               <a
-                href={`#`}
-                onClick={(e) => {
-                  e.preventDefault();
-                  alert(`Starting download simulation for ${rel.filename}`);
-                }}
-                className="w-full rounded-2xl bg-white text-black py-4 text-center text-base font-bold hover:bg-gray-200 transition-colors shadow-md"
+                href={`/${rel.filename}`}
+                download={rel.filename}
+                className="w-full rounded-2xl bg-white text-black py-4 text-center text-base font-bold hover:bg-gray-200 transition-colors shadow-md block"
               >
                 Download Package
               </a>
