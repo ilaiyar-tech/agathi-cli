@@ -1,5 +1,6 @@
 import { LayoutCell } from "./layout_engine.js";
 import { WidgetRegistry } from "./widget_registry.js";
+import { TextLayoutEngine, getCharWidth, getStringWidth } from "./text_layout_engine.js";
 import chalk from "chalk";
 
 export class TerminalRenderer {
@@ -92,15 +93,22 @@ export class TerminalRenderer {
           }
         }
 
-        if (absoluteX >= minX && absoluteX <= maxX) {
+        const charW = getCharWidth(text[i]);
+        if (absoluteX >= minX && absoluteX + charW - 1 <= maxX) {
           if (y >= 0 && y < termHeight && absoluteX < termWidth) {
             screen[y][absoluteX] = {
               char: text[i],
               style: currentStyle
             };
+            if (charW === 2 && absoluteX + 1 <= maxX) {
+              screen[y][absoluteX + 1] = {
+                char: "", // clear adjacent wide cell
+                style: currentStyle
+              };
+            }
           }
         }
-        absoluteX++;
+        absoluteX += charW;
         i++;
       }
 
@@ -135,6 +143,34 @@ export class TerminalRenderer {
       }
     }
 
+    // Helper to wrap a single chat log entry preserving known prefixes
+    function wrapScrollbackEntry(entry: string, w: number): string[] {
+      let prefix = "";
+      if (entry.startsWith("you ›")) {
+        prefix = "you › ";
+      } else if (entry.startsWith("து ›")) {
+        prefix = "து › ";
+      } else if (entry.startsWith("Error ›")) {
+        prefix = "Error › ";
+      }
+
+      if (prefix) {
+        const cleanEntry = entry.substring(prefix.length);
+        const prefixWidth = getStringWidth(prefix);
+        const wrappedLines = TextLayoutEngine.wrapText(cleanEntry, w, prefixWidth, true);
+        if (wrappedLines.length === 0) return [prefix];
+
+        const result: string[] = [prefix + wrappedLines[0]];
+        const spaces = " ".repeat(prefixWidth);
+        for (let i = 1; i < wrappedLines.length; i++) {
+          result.push(spaces + wrappedLines[i]);
+        }
+        return result;
+      } else {
+        return TextLayoutEngine.wrapText(entry, w, 0, true);
+      }
+    }
+
     // --- Phase 5: Draw widget contents clipped to content area ---
     for (const cell of cells) {
       const { x, y, width, height, id } = cell;
@@ -145,11 +181,16 @@ export class TerminalRenderer {
       const contentHeight = height - 2;
 
       if (id === "terminal") {
-        const maxLines = contentHeight;
-        const startIdx = Math.max(0, chatScrollback.length - maxLines);
-        const visibleLines = chatScrollback.slice(startIdx);
+        // Lay out scrollback cleanly using TextLayoutEngine
+        const wrappedLogs: string[] = [];
+        for (const log of chatScrollback) {
+          wrappedLogs.push(...wrapScrollbackEntry(log, width - 4));
+        }
 
-        for (let idx = 0; idx < maxLines; idx++) {
+        const startIdx = Math.max(0, wrappedLogs.length - contentHeight);
+        const visibleLines = wrappedLogs.slice(startIdx);
+
+        for (let idx = 0; idx < contentHeight; idx++) {
           const targetY = y + 1 + idx;
           const line = visibleLines[idx];
           if (line !== undefined) {
@@ -191,6 +232,8 @@ export class TerminalRenderer {
       let activeStyle = "";
       for (let c = 0; c < termWidth; c++) {
         const cell = screen[r][c];
+        if (cell.char === "") continue; // skip wide char extension cell
+
         if (cell.style !== activeStyle) {
           if (activeStyle) {
             rowStr += "\u001b[0m";

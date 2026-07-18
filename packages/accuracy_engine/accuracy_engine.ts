@@ -1,13 +1,13 @@
 import { memory } from "../memory/memory_engine.js";
 
 export interface TelemetryMetrics {
-  answerAccuracy: number;
-  toolSuccessRate: number;
-  hallucinationRate: number;
-  agentSuccessRate: number;
-  memoryRetrievalRate: number;
-  knowledgePrecision: number;
-  routingAccuracy: number;
+  answerAccuracy: number | null;
+  toolSuccessRate: number | null;
+  hallucinationRate: number | null;
+  agentSuccessRate: number | null;
+  memoryRetrievalRate: number | null;
+  knowledgePrecision: number | null;
+  routingAccuracy: number | null;
 }
 
 export class AccuracyEngine {
@@ -58,7 +58,6 @@ export class AccuracyEngine {
     hallucinationRate: number;
     verified: "YES" | "NO";
   } {
-    // Simple heuristic-based verification (hallucination checks)
     const contextWords = new Set(referenceContext.toLowerCase().split(/\W+/));
     const responseWords = response.toLowerCase().split(/\W+/).filter(w => w.length > 3);
 
@@ -66,7 +65,6 @@ export class AccuracyEngine {
     let total = 0;
 
     for (const word of responseWords) {
-      // Exclude common stop words for check
       const isCommon = ["this", "that", "there", "their", "with", "from", "have", "about"].includes(word);
       if (!isCommon) {
         total++;
@@ -85,38 +83,38 @@ export class AccuracyEngine {
 
   getMetrics(): TelemetryMetrics {
     try {
-      const getRate = (type: string, defaultRate: number): number => {
+      const getRate = (type: string): number | null => {
         const row = memory.database.prepare(
           "SELECT AVG(success) * 100 as rate FROM accuracy_telemetry WHERE type = ?"
         ).get(type) as any;
-        return row && row.rate !== null ? Math.round(row.rate) : defaultRate;
+        return row && row.rate !== null ? Math.round(row.rate) : null;
       };
 
-      const getAvgScore = (type: string, field: string, defaultScore: number): number => {
+      const getAvgScore = (type: string, field: string): number | null => {
         const row = memory.database.prepare(
           `SELECT AVG(${field}) as score FROM accuracy_telemetry WHERE type = ?`
         ).get(type) as any;
-        return row && row.score !== null ? Math.round(row.score) : defaultScore;
+        return row && row.score !== null ? Math.round(row.score) : null;
       };
 
       return {
-        answerAccuracy: getAvgScore("chat", "accuracy_score", 96.4),
-        toolSuccessRate: getRate("tool", 99.2),
-        hallucinationRate: getAvgScore("chat", "hallucination_score", 0.8),
-        agentSuccessRate: getRate("agent", 98.1),
-        memoryRetrievalRate: getRate("memory", 97.3),
-        knowledgePrecision: getRate("knowledge", 96.7),
-        routingAccuracy: getRate("routing", 98.5)
+        answerAccuracy: getAvgScore("chat", "accuracy_score"),
+        toolSuccessRate: getRate("tool"),
+        hallucinationRate: getAvgScore("chat", "hallucination_score"),
+        agentSuccessRate: getRate("agent"),
+        memoryRetrievalRate: getRate("memory"),
+        knowledgePrecision: getRate("knowledge"),
+        routingAccuracy: getRate("routing")
       };
     } catch (e) {
       return {
-        answerAccuracy: 96.4,
-        toolSuccessRate: 99.2,
-        hallucinationRate: 0.8,
-        agentSuccessRate: 98.1,
-        memoryRetrievalRate: 97.3,
-        knowledgePrecision: 96.7,
-        routingAccuracy: 98.5
+        answerAccuracy: null,
+        toolSuccessRate: null,
+        hallucinationRate: null,
+        agentSuccessRate: null,
+        memoryRetrievalRate: null,
+        knowledgePrecision: null,
+        routingAccuracy: null
       };
     }
   }

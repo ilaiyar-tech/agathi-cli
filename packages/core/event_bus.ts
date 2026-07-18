@@ -13,7 +13,8 @@ export type EventType =
   | "ZIP_CREATED"
   | "DOWNLOAD_READY"
   | "PLUGIN_TRIGGERED"
-  | "TOOL_PROGRESS";
+  | "TOOL_PROGRESS"
+  | "STATUS_UPDATE";
 
 export interface RuntimeEvent {
   type: EventType;

@@ -7,7 +7,7 @@ export type WidgetLifecycleState =
   | "HIDDEN"
   | "DESTROYED";
 
-export type DockPosition = "LEFT" | "RIGHT" | "BOTTOM" | "CENTER" | "FLOATING";
+export type DockPosition = "LEFT" | "RIGHT" | "BOTTOM" | "CENTER" | "FLOATING" | "TOP";
 
 export interface WorkspaceWidget {
   id: string;

@@ -7,7 +7,7 @@ async function runTests() {
   TuiConsoleManager.registerDefaultWidgets();
   
   const widgets = WidgetRegistry.getWidgets();
-  assert.strictEqual(widgets.length, 6);
+  assert.strictEqual(widgets.length, 7);
 
   // Test layout computations
   const cells = LayoutEngine.computeLayout(100, 30);

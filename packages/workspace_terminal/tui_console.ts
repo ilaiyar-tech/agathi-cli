@@ -1,13 +1,10 @@
 import { WidgetRegistry, WorkspaceWidget } from "./widget_registry.js";
-import { get_active_model, model_usage } from "../model_manager/index.js";
 import { whatsapp } from "../whatsapp_manager/index.js";
-import { scheduler } from "../task_scheduler/index.js";
-import { sessions } from "../session_manager/index.js";
 import { eventBus } from "../core/event_bus.js";
 import { memory } from "../memory/memory_engine.js";
-import { accuracyEngine } from "../accuracy_engine/index.js";
 import { RenderManager } from "./render_manager.js";
 import { PROMPT_PREFIX } from "../core/index.js";
+import { RuntimeStatusService } from "./runtime_status_service.js";
 import chalk from "chalk";
 
 export class TuiConsoleManager {
@@ -39,8 +36,6 @@ export class TuiConsoleManager {
         );
       `);
     } catch (e) {
-      // Direct console output during active interactive TUI is prohibited.
-      // We log to RenderManager instead to keep stdout clean.
       RenderManager.addLog(`[TUI DB Error] Failed to initialize tui_workspaces table: ${e}`);
     }
   }
@@ -80,6 +75,33 @@ export class TuiConsoleManager {
   static registerDefaultWidgets() {
     this.initDatabase();
 
+    // 0. Header Widget (Spans full width at top)
+    WidgetRegistry.register({
+      id: "header_widget",
+      title: "🖥 System Status Header",
+      priority: 100,
+      preferredWidth: 100,
+      preferredHeight: 3,
+      visible: true,
+      state: "ACTIVE",
+      dock: "TOP",
+      render: (width, height) => {
+        const status = RuntimeStatusService.getStatus();
+        const activeStr = `${chalk.bold("Active Model:")} ${chalk.green(status.activeModel)}`;
+        
+        let connColor = chalk.red;
+        if (status.connection === "Connected") connColor = chalk.green;
+        else if (status.connection === "Connecting" || status.connection === "Reconnecting") connColor = chalk.yellow;
+        const connStr = `${chalk.bold("Status:")} ${connColor(status.connection)} (Last Seen: ${status.lastSeen})`;
+        
+        const memStr = `${chalk.bold("Footprint:")} ${chalk.cyan((status.rss / 1024 / 1024).toFixed(1))} MB`;
+        
+        return [
+          `${activeStr}   │   ${connStr}   │   ${memStr}`
+        ];
+      }
+    });
+
     // 1. Models Widget
     WidgetRegistry.register({
       id: "models_widget",
@@ -91,12 +113,11 @@ export class TuiConsoleManager {
       state: "ACTIVE",
       dock: "LEFT",
       render: (width, height) => {
-        const active = get_active_model();
-        const usage = model_usage();
+        const status = RuntimeStatusService.getStatus();
         return [
-          `Active:   ${chalk.green(active)}`,
-          `Status:   ${usage.loaded ? chalk.cyan("Loaded") : chalk.yellow("Unloaded")}`,
-          `Footprint: ${(usage.size / 1024 / 1024 / 1024).toFixed(2)} GB`
+          `Active:   ${chalk.green(status.activeModel)}`,
+          `Status:   ${status.modelLoaded ? chalk.cyan("Loaded") : chalk.yellow("Unloaded")}`,
+          `Size:     ${(status.modelFootprint / 1024 / 1024 / 1024).toFixed(2)} GB`
         ];
       }
     });
@@ -112,11 +133,11 @@ export class TuiConsoleManager {
       state: "ACTIVE",
       dock: "LEFT",
       render: (width, height) => {
-        const list = sessions.list_sessions();
+        const status = RuntimeStatusService.getStatus();
         return [
-          `Sessions: ${chalk.white(String(list.length))}`,
-          `Active ID: ${chalk.white(list.find(s => s.metadata?.active)?.id || "default")}`,
-          `Memory:   SQLite Healthy`
+          `Sessions:  ${chalk.white(String(status.sessionCount))}`,
+          `Active ID: ${chalk.white(status.activeSessionId)}`,
+          `Database:  SQLite Healthy`
         ];
       }
     });
@@ -151,11 +172,10 @@ export class TuiConsoleManager {
       state: "ACTIVE",
       dock: "RIGHT",
       render: (width, height) => {
-        const tasksMap = (scheduler as any).tasks as Map<string, any>;
-        const size = tasksMap ? tasksMap.size : 0;
+        const status = RuntimeStatusService.getStatus();
         return [
-          `Running:  ${chalk.cyan(String(size))}`,
-          `Queue:    ${size === 0 ? "Idle" : `${size} active`}`
+          `Running:  ${chalk.cyan(String(status.runningJobs))}`,
+          `Queue:    ${status.queuedJobs === 0 ? "Idle" : `${status.queuedJobs} active`}`
         ];
       }
     });
@@ -181,7 +201,7 @@ export class TuiConsoleManager {
         };
 
         return [
-          `  ${nodeColor("User")} ${edgeColor("User", "Main Agent")} ${nodeColor("Main Agent")} ${edgeColor("Main Agent", "Planner")} ${nodeColor("Planner")} ${edgeColor("Planner", "Model")} ${nodeColor("Model")}`,
+          `  ${nodeColor("User")} ${edgeColor("User", "Main Agent")} ${nodeColor("Main Agent")} ${edgeColor("Main Agent", "Planner")} ${nodeColor("Main Agent")} ${edgeColor("Main Agent", "Model")} ${nodeColor("Model")}`,
           `                 │              │`,
           `                 ▼              ▼`,
           `              ${nodeColor("Memory")}         ${nodeColor("Browser")}`
@@ -200,15 +220,19 @@ export class TuiConsoleManager {
       state: "ACTIVE",
       dock: "RIGHT",
       render: (width, height) => {
-        const metrics = accuracyEngine.getMetrics();
+        const status = RuntimeStatusService.getStatus();
+        const metrics = status.accuracy;
+        const fmt = (val: number | null, colorFn: (s: string) => string) => {
+          return val !== null ? colorFn(`${val}%`) : chalk.gray("--");
+        };
         return [
-          `Answer Acc:    ${chalk.green(metrics.answerAccuracy)}%`,
-          `Tool Success:  ${chalk.green(metrics.toolSuccessRate)}%`,
-          `Hallucination: ${chalk.red(metrics.hallucinationRate)}%`,
-          `Agent Success: ${chalk.green(metrics.agentSuccessRate)}%`,
-          `Memory Ret:    ${chalk.cyan(metrics.memoryRetrievalRate)}%`,
-          `Knowledge Prc: ${chalk.cyan(metrics.knowledgePrecision)}%`,
-          `Routing Acc:   ${chalk.green(metrics.routingAccuracy)}%`
+          `Answer Acc:    ${fmt(metrics.answerAccuracy, chalk.green)}`,
+          `Tool Success:  ${fmt(metrics.toolSuccessRate, chalk.green)}`,
+          `Hallucination: ${fmt(metrics.hallucinationRate, chalk.red)}`,
+          `Agent Success: ${fmt(metrics.agentSuccessRate, chalk.green)}`,
+          `Memory Ret:    ${fmt(metrics.memoryRetrievalRate, chalk.cyan)}`,
+          `Knowledge Prc: ${fmt(metrics.knowledgePrecision, chalk.cyan)}`,
+          `Routing Acc:   ${fmt(metrics.routingAccuracy, chalk.green)}`
         ];
       }
     });
@@ -221,18 +245,20 @@ export class TuiConsoleManager {
     eventBus.on("*", (event) => {
       const type = event.type;
       
-      if (type === "MODEL_SWITCHED") {
+      if (type === "STATUS_UPDATE") {
+        RenderManager.queueDraw();
+      } else if (type === "MODEL_SWITCHED") {
         WidgetRegistry.updateWidgetState("models_widget", "UPDATING");
         this.activeAgentNode = "Model";
         this.addLog(`[TUI Event] Model switched to: ${event.payload.model}`);
       } else if (type === "TASK_STARTED") {
         WidgetRegistry.updateWidgetState("tasks_widget", "ACTIVE");
-        WidgetRegistry.updateWidgetPriority("tasks_widget", 15); // Scale priority
+        WidgetRegistry.updateWidgetPriority("tasks_widget", 15);
         this.activeAgentNode = "Planner";
         this.addLog(`[TUI Event] Task started: ${event.payload.taskId}`);
       } else if (type === "TASK_COMPLETED") {
         WidgetRegistry.updateWidgetState("tasks_widget", "ACTIVE");
-        WidgetRegistry.updateWidgetPriority("tasks_widget", 6); // Shrink priority
+        WidgetRegistry.updateWidgetPriority("tasks_widget", 6);
         this.activeAgentNode = "Main Agent";
         this.addLog(`[TUI Event] Task completed: ${event.payload.taskId}`);
       } else if (type === "FILE_WRITTEN") {
@@ -247,6 +273,10 @@ export class TuiConsoleManager {
     this.registerDefaultWidgets();
     this.loadLayout(workspaceId);
     this.setupEventBusSubscriptions();
+
+    // Start health monitor service
+    const refreshInterval = Number(process.env.REFRESH_INTERVAL || "3000");
+    RuntimeStatusService.start(refreshInterval);
 
     this.addLog(` ${chalk.bold.magenta("tu2pu")} Workspace Console launched [Workspace: ${workspaceId}]`);
     this.addLog(` Type your prompt below. Try 'doctor', 'models', or chat directly.`);
@@ -271,8 +301,6 @@ export class TuiConsoleManager {
     while (true) {
       const input = await rl.question(chalk.magenta(PROMPT_PREFIX + " "));
       
-      // Immediately force a redraw to wipe out the newline/input written by readline to stdout,
-      // avoiding layout shift and jumping messages.
       RenderManager.forceRedraw();
 
       const trimmed = input.trim();
@@ -299,6 +327,7 @@ export class TuiConsoleManager {
     }
 
     rl.close();
+    RuntimeStatusService.stop();
     process.exit(0);
   }
 }

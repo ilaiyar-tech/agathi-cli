@@ -15,12 +15,10 @@ export class LayoutValidator {
     }
 
     for (const cell of cells) {
-      // 1. Reject negative or zero sizes
       if (cell.width <= 0 || cell.height <= 0) {
         return { valid: false, reason: `Cell ${cell.id} has negative or zero size: ${cell.width}x${cell.height}` };
       }
 
-      // 2. Reject out-of-bound rectangles
       if (cell.x < 0 || cell.y < 0 || cell.x + cell.width > termWidth || cell.y + cell.height > termHeight) {
         return { 
           valid: false, 
@@ -29,14 +27,10 @@ export class LayoutValidator {
       }
     }
 
-    // 3. Reject interior overlapping rectangles
     for (let i = 0; i < cells.length; i++) {
       const c1 = cells[i];
       for (let j = i + 1; j < cells.length; j++) {
         const c2 = cells[j];
-        
-        // Two cells overlap if their interiors intersect.
-        // Interior of cell is: [x + 1, x + width - 2] x [y + 1, y + height - 2].
         if (c1.width > 2 && c2.width > 2 && c1.height > 2 && c2.height > 2) {
           const overlapX = Math.max(c1.x + 1, c2.x + 1) <= Math.min(c1.x + c1.width - 2, c2.x + c2.width - 2);
           const overlapY = Math.max(c1.y + 1, c2.y + 1) <= Math.min(c1.y + c1.height - 2, c2.y + c2.height - 2);
@@ -60,7 +54,6 @@ export class LayoutEngine {
     const cells: LayoutCell[] = [];
     const visibleWidgets = WidgetRegistry.getWidgets().filter(w => w.visible);
 
-    // If screen space is too constrained, allocate 100% to main terminal
     if (termWidth < 80 || termHeight < 15) {
       return this.getFallbackLayout(termWidth, termHeight);
     }
@@ -68,61 +61,83 @@ export class LayoutEngine {
     const leftWidgets = visibleWidgets.filter(w => w.dock === "LEFT");
     const rightWidgets = visibleWidgets.filter(w => w.dock === "RIGHT");
     const bottomWidgets = visibleWidgets.filter(w => w.dock === "BOTTOM");
+    const topWidgets = visibleWidgets.filter(w => w.dock === "TOP");
+
+    let headerHeight = 0;
+    if (topWidgets.length > 0) {
+      headerHeight = 3; // Fixed header row height
+    }
 
     let leftWidth = 0;
     if (leftWidgets.length > 0) {
-      leftWidth = Math.min(30, Math.floor(termWidth * 0.25));
+      leftWidth = Math.min(30, Math.max(20, Math.floor(termWidth * 0.25)));
     }
 
     let rightWidth = 0;
     if (rightWidgets.length > 0 && termWidth > 120) {
-      rightWidth = Math.min(30, Math.floor(termWidth * 0.25));
+      rightWidth = Math.min(30, Math.max(20, Math.floor(termWidth * 0.25)));
     }
 
-    let bottomHeight = 0;
+    let footerHeight = 0;
     if (bottomWidgets.length > 0) {
-      bottomHeight = Math.min(10, Math.floor(termHeight * 0.30));
+      footerHeight = Math.min(10, Math.max(5, Math.floor(termHeight * 0.25)));
     }
 
-    const terminalHeight = termHeight - bottomHeight;
+    const middleHeight = termHeight - headerHeight - footerHeight;
 
-    // Center Column X span: from leftWidth to termWidth - rightWidth
-    const cX = leftWidth;
-    const cW = termWidth - rightWidth - leftWidth;
-    const cH = terminalHeight + (bottomHeight > 0 ? 1 : 0);
-
-    cells.push({
-      id: "terminal",
-      x: cX,
-      y: 0,
-      width: cW,
-      height: cH
-    });
-
-    if (bottomHeight > 0 && bottomWidgets.length > 0) {
-      const totalWidthForBottom = cW;
-      const cellWidth = Math.floor(totalWidthForBottom / bottomWidgets.length);
-      bottomWidgets.forEach((w, idx) => {
-        const x = cX + idx * cellWidth;
-        const width = idx === bottomWidgets.length - 1 
-          ? totalWidthForBottom - (idx * cellWidth) 
-          : cellWidth + 1;
+    // 1. Top Header Cells (Span full width)
+    if (headerHeight > 0) {
+      topWidgets.forEach(w => {
         cells.push({
           id: w.id,
-          x,
-          y: terminalHeight,
-          width,
-          height: termHeight - terminalHeight
+          x: 0,
+          y: 0,
+          width: termWidth,
+          height: headerHeight + 1
         });
       });
     }
 
+    const middleY = headerHeight;
+    const footerY = termHeight - footerHeight;
+
+    // 2. Center Chat Terminal
+    const cX = leftWidth;
+    const cW = termWidth - rightWidth - leftWidth;
+    
+    cells.push({
+      id: "terminal",
+      x: cX,
+      y: middleY,
+      width: cW,
+      height: middleHeight + (footerHeight > 0 ? 1 : 0)
+    });
+
+    // 3. Bottom Footer Cells
+    if (footerHeight > 0 && bottomWidgets.length > 0) {
+      const cellWidth = Math.floor(cW / bottomWidgets.length);
+      bottomWidgets.forEach((w, idx) => {
+        const x = cX + idx * cellWidth;
+        const width = idx === bottomWidgets.length - 1 
+          ? cW - (idx * cellWidth) 
+          : cellWidth + 1;
+        cells.push({
+          id: w.id,
+          x,
+          y: footerY,
+          width,
+          height: footerHeight
+        });
+      });
+    }
+
+    // 4. Left Sidebar Widgets
     if (leftWidth > 0 && leftWidgets.length > 0) {
-      const cellHeight = Math.floor(termHeight / leftWidgets.length);
+      const cellHeight = Math.floor(middleHeight / leftWidgets.length);
       leftWidgets.forEach((w, idx) => {
-        const y = idx * cellHeight;
+        const y = middleY + idx * cellHeight;
         const height = idx === leftWidgets.length - 1 
-          ? termHeight - y 
+          ? middleHeight - (idx * cellHeight) 
           : cellHeight + 1;
         cells.push({
           id: w.id,
@@ -134,13 +149,14 @@ export class LayoutEngine {
       });
     }
 
+    // 5. Right Sidebar Widgets
     if (rightWidth > 0 && rightWidgets.length > 0) {
-      const cellHeight = Math.floor(termHeight / rightWidgets.length);
+      const cellHeight = Math.floor(middleHeight / rightWidgets.length);
       const startX = termWidth - rightWidth;
       rightWidgets.forEach((w, idx) => {
-        const y = idx * cellHeight;
+        const y = middleY + idx * cellHeight;
         const height = idx === rightWidgets.length - 1 
-          ? termHeight - y 
+          ? middleHeight - (idx * cellHeight) 
           : cellHeight + 1;
         cells.push({
           id: w.id,
